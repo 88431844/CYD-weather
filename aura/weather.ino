@@ -55,9 +55,10 @@
 #define TOUCH_CALIBRATION_RELEASE_MS 80UL
 #define TOUCH_CALIBRATION_RAW_MIN 0
 #define TOUCH_CALIBRATION_RAW_MAX 4095
+#define TOUCH_CALIBRATION_VERSION 2
 
 static const TouchScreenPoint TOUCH_CALIBRATION_TARGETS[] = {
-  {24, 44}, {216, 44}, {120, 160}, {24, 276}, {216, 276}
+  {18, 18}, {222, 18}, {120, 160}, {18, 302}, {222, 302}
 };
 
 enum TouchCalibrationState {
@@ -345,7 +346,9 @@ static bool raw_touch_point_valid(int raw_x, int raw_y) {
 }
 
 static void load_touch_calibration() {
-  touch_calibration.valid = prefs.getBool("touchCalibrated", false);
+  touch_calibration.valid =
+      prefs.getUInt("touchCalVersion", 0) == TOUCH_CALIBRATION_VERSION &&
+      prefs.getBool("touchCalibrated", false);
   touch_calibration.a = prefs.getFloat("touchCalA", 0.0f);
   touch_calibration.b = prefs.getFloat("touchCalB", 0.0f);
   touch_calibration.c = prefs.getFloat("touchCalC", 0.0f);
@@ -361,6 +364,7 @@ static void save_touch_calibration(const TouchCalibration &calibration) {
   prefs.putFloat("touchCalD", calibration.d);
   prefs.putFloat("touchCalE", calibration.e);
   prefs.putFloat("touchCalF", calibration.f);
+  prefs.putUInt("touchCalVersion", TOUCH_CALIBRATION_VERSION);
   prefs.putBool("touchCalibrated", true);
 }
 
@@ -753,10 +757,11 @@ static void update_calibration_target() {
   }
 
   calibration_target = lv_obj_create(calibration_overlay);
-  lv_obj_set_size(calibration_target, 28, 28);
+  lv_obj_set_size(calibration_target, 24, 24);
   lv_obj_set_pos(calibration_target,
-                 static_cast<int>(TOUCH_CALIBRATION_TARGETS[calibration_target_index].x) - 14,
-                 static_cast<int>(TOUCH_CALIBRATION_TARGETS[calibration_target_index].y) - 14);
+                 static_cast<int>(TOUCH_CALIBRATION_TARGETS[calibration_target_index].x) - 12,
+                 static_cast<int>(TOUCH_CALIBRATION_TARGETS[calibration_target_index].y) - 12);
+  lv_obj_set_style_pad_all(calibration_target, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_bg_color(calibration_target, lv_palette_main(LV_PALETTE_RED),
                             LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_bg_opa(calibration_target, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -865,12 +870,14 @@ static void start_touch_calibration() {
   lv_obj_set_style_bg_color(calibration_overlay, lv_color_hex(0x183246),
                             LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_bg_opa(calibration_overlay, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_all(calibration_overlay, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_border_width(calibration_overlay, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_clear_flag(calibration_overlay, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(calibration_overlay, LV_OBJ_FLAG_CLICKABLE);
 
   lv_obj_t *instructions = lv_label_create(calibration_overlay);
   lv_label_set_text(instructions, strings->calibration_instructions);
-  lv_obj_set_width(instructions, 220);
+  lv_obj_set_width(instructions, 170);
   lv_obj_set_style_text_font(instructions, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_text_color(instructions, lv_color_white(), LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_text_align(instructions, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -885,7 +892,7 @@ static void start_touch_calibration() {
 
   lv_obj_t *cancel = lv_btn_create(calibration_overlay);
   lv_obj_set_size(cancel, 108, 32);
-  lv_obj_align(cancel, LV_ALIGN_BOTTOM_MID, 0, -3);
+  lv_obj_align(cancel, LV_ALIGN_BOTTOM_MID, 0, -44);
   lv_obj_add_event_cb(cancel, calibration_cancel_event_cb, LV_EVENT_CLICKED, nullptr);
   lv_obj_t *cancel_label = lv_label_create(cancel);
   lv_label_set_text(cancel_label, strings->calibration_cancel);
@@ -1053,10 +1060,10 @@ void create_settings_window() {
   lv_obj_set_style_margin_left(title, 10, 0);
 
   btn_close_obj = lv_btn_create(header);
-  lv_obj_set_size(btn_close_obj, 30, LV_PCT(100));
+  lv_obj_set_size(btn_close_obj, 42, LV_PCT(100));
   lv_obj_set_style_bg_opa(btn_close_obj, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_border_width(btn_close_obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_add_event_cb(btn_close_obj, settings_event_handler, LV_EVENT_CLICKED, NULL);
+  lv_obj_add_event_cb(btn_close_obj, settings_event_handler, LV_EVENT_PRESSED, NULL);
   lv_obj_t *close_label = lv_label_create(btn_close_obj);
   lv_label_set_text(close_label, "X");
   lv_obj_set_style_text_font(close_label, get_font_16(), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1296,7 +1303,8 @@ static void settings_event_handler(lv_event_t *e) {
     return;
   }
 
-  if (tgt == btn_close_obj && code == LV_EVENT_CLICKED) {
+  if (tgt == btn_close_obj &&
+      (code == LV_EVENT_PRESSED || code == LV_EVENT_CLICKED)) {
     prefs.putBool("useFahrenheit", use_fahrenheit);
     prefs.putBool("use24Hour", use_24_hour);
     prefs.putBool("useNightMode", use_night_mode);

@@ -43,6 +43,8 @@ class SettingsLayoutAndSoundTests(unittest.TestCase):
         settings = WEATHER[WEATHER.index("void create_settings_window() {") :]
         self.assertIn("btn_close_obj = lv_btn_create(header)", settings)
         self.assertIn('lv_label_set_text(close_label, "X")', settings)
+        self.assertIn("lv_obj_set_size(btn_close_obj, 42, LV_PCT(100))", settings)
+        self.assertIn("LV_EVENT_PRESSED", settings)
         self.assertNotIn("lv_obj_t *close_row = create_row", settings)
 
 

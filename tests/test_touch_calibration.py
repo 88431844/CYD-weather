@@ -14,7 +14,7 @@ class TouchCalibrationContractTests(unittest.TestCase):
     def test_five_targets_are_declared_in_approved_order(self):
         start = WEATHER.index("TOUCH_CALIBRATION_TARGETS")
         block = WEATHER[start:WEATHER.index("};", start) + 2]
-        points = [(24, 44), (216, 44), (120, 160), (24, 276), (216, 276)]
+        points = [(18, 18), (222, 18), (120, 160), (18, 302), (222, 302)]
         positions = [block.index(f"{{{x}, {y}}}") for x, y in points]
         self.assertEqual(positions, sorted(positions))
         self.assertIn("TOUCH_CALIBRATION_WAIT_RELEASE", WEATHER)
@@ -37,6 +37,11 @@ class TouchCalibrationContractTests(unittest.TestCase):
         ):
             self.assertIn(key, WEATHER)
 
+    def test_calibration_points_have_a_versioned_persistence_format(self):
+        self.assertIn("TOUCH_CALIBRATION_VERSION", WEATHER)
+        self.assertIn("touchCalVersion", WEATHER)
+        self.assertIn("prefs.getUInt(\"touchCalVersion\", 0)", WEATHER)
+
     def test_settings_and_modal_flow_are_present(self):
         for symbol in (
             "touch_calibration",
@@ -55,6 +60,10 @@ class TouchCalibrationContractTests(unittest.TestCase):
             "calibration_failed",
         ):
             self.assertIn(symbol, TRANSLATIONS)
+
+    def test_calibration_targets_do_not_overlap_instructions_or_cancel(self):
+        self.assertIn("lv_obj_set_width(instructions, 170)", WEATHER)
+        self.assertIn("lv_obj_align(cancel, LV_ALIGN_BOTTOM_MID, 0, -44)", WEATHER)
 
 
 if __name__ == "__main__":
