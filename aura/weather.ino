@@ -58,7 +58,7 @@ LV_FONT_DECLARE(lv_font_noto_sans_sc_14);
 LV_FONT_DECLARE(lv_font_noto_sans_sc_16);
 LV_FONT_DECLARE(lv_font_noto_sans_sc_20);
 
-static Language current_language = LANG_EN;
+static Language current_language = LANG_ZH;
 
 // Font selection based on language
 const lv_font_t* get_font_12() {
@@ -368,7 +368,7 @@ void setup() {
   use_night_mode = prefs.getBool("useNightMode", false);
   uint32_t brightness = prefs.getUInt("brightness", 255);
   use_24_hour = prefs.getBool("use24Hour", false);
-  current_language = (Language)prefs.getUInt("language", LANG_EN);
+  current_language = (Language)prefs.getUInt("language", LANG_ZH);
   analogWrite(LCD_BACKLIGHT_PIN, brightness);
 
   // Check for Wi-Fi config and request it if not available

@@ -11,6 +11,10 @@ WEATHER = (ROOT / "aura" / "weather.ino").read_text(encoding="utf-8")
 
 
 class ChineseLanguageSupportTests(unittest.TestCase):
+    def test_simplified_chinese_is_the_default_language(self):
+        self.assertRegex(WEATHER, r"static Language current_language\s*=\s*LANG_ZH")
+        self.assertRegex(WEATHER, r"prefs\.getUInt\(\"language\",\s*LANG_ZH\)")
+
     def test_chinese_is_a_selectable_localized_language(self):
         self.assertRegex(TRANSLATIONS, r"LANG_ZH\s*=\s*7")
         self.assertIn("static const LocalizedStrings strings_zh", TRANSLATIONS)
