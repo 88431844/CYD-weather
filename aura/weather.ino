@@ -4,6 +4,23 @@
 #include <ArduinoJson.h>
 #include <time.h>
 #include <lvgl.h>
+
+// Keep the CYD display wiring independent of the installed TFT_eSPI User_Setup.h.
+#define USER_SETUP_LOADED
+#define ILI9341_2_DRIVER
+#define TFT_WIDTH 240
+#define TFT_HEIGHT 320
+#define TFT_BL 21
+#define TFT_BACKLIGHT_ON HIGH
+#define TFT_MISO 12
+#define TFT_MOSI 13
+#define TFT_SCLK 14
+#define TFT_CS 15
+#define TFT_DC 2
+#define TFT_RST -1
+#define SPI_FREQUENCY 55000000
+#define SPI_READ_FREQUENCY 20000000
+
 #include <TFT_eSPI.h>
 #include <XPT2046_Touchscreen.h>
 #include <Preferences.h>
@@ -16,6 +33,7 @@
 #define XPT2046_CLK 25   // T_CLK
 #define XPT2046_CS 33    // T_CS
 #define LCD_BACKLIGHT_PIN 21
+#define SPEAKER_PIN 26   // On-board speaker/buzzer on ESP32-2432S028R
 #define SCREEN_WIDTH 240
 #define SCREEN_HEIGHT 320
 #define DRAW_BUF_SIZE (SCREEN_WIDTH * SCREEN_HEIGHT / 10 * (LV_COLOR_DEPTH / 8))
@@ -174,6 +192,7 @@ LV_IMG_DECLARE(image_wintry_mix_rain_snow);
 void create_ui();
 void fetch_and_update_weather();
 void create_settings_window();
+void play_click_sound();
 static void screen_event_cb(lv_event_t *e);
 static void settings_event_handler(lv_event_t *e);
 const lv_img_dsc_t *choose_image(int wmo_code, int is_day);
@@ -253,6 +272,7 @@ static void update_clock(lv_timer_t *timer) {
 }
 
 static void ta_event_cb(lv_event_t *e) {
+  play_click_sound();
   lv_obj_t *ta = (lv_obj_t *)lv_event_get_target(e);
   lv_obj_t *kb = (lv_obj_t *)lv_event_get_user_data(e);
 
@@ -323,6 +343,7 @@ void setup() {
   TFT_eSPI tft = TFT_eSPI();
   tft.init();
   pinMode(LCD_BACKLIGHT_PIN, OUTPUT);
+  pinMode(SPEAKER_PIN, OUTPUT);
 
   lv_init();
 
@@ -549,6 +570,7 @@ void populate_results_dropdown() {
 }
 
 static void location_save_event_cb(lv_event_t *e) {
+  play_click_sound();
   JsonArray *pres = static_cast<JsonArray *>(lv_event_get_user_data(e));
   uint16_t idx = lv_dropdown_get_selected(results_dd);
 
@@ -583,15 +605,18 @@ static void location_save_event_cb(lv_event_t *e) {
 }
 
 static void location_cancel_event_cb(lv_event_t *e) {
+  play_click_sound();
   lv_obj_del(location_win);
   location_win = nullptr;
 }
 
 void screen_event_cb(lv_event_t *e) {
+  play_click_sound();
   create_settings_window();
 }
 
 void daily_cb(lv_event_t *e) {
+  play_click_sound();
   const LocalizedStrings* strings = get_strings(current_language);
   lv_obj_add_flag(box_daily, LV_OBJ_FLAG_HIDDEN);
   lv_label_set_text(lbl_forecast, strings->hourly_forecast);
@@ -599,6 +624,7 @@ void daily_cb(lv_event_t *e) {
 }
 
 void hourly_cb(lv_event_t *e) {
+  play_click_sound();
   const LocalizedStrings* strings = get_strings(current_language);
   lv_obj_add_flag(box_hourly, LV_OBJ_FLAG_HIDDEN);
   lv_label_set_text(lbl_forecast, strings->seven_day_forecast);
@@ -607,6 +633,7 @@ void hourly_cb(lv_event_t *e) {
 
 
 static void reset_wifi_event_handler(lv_event_t *e) {
+  play_click_sound();
   const LocalizedStrings* strings = get_strings(current_language);
   lv_obj_t *mbox = lv_msgbox_create(lv_scr_act());
   lv_obj_t *title = lv_msgbox_add_title(mbox, strings->reset);
@@ -639,6 +666,7 @@ static void reset_wifi_event_handler(lv_event_t *e) {
 }
 
 static void reset_confirm_yes_cb(lv_event_t *e) {
+  play_click_sound();
   lv_obj_t *mbox = (lv_obj_t *)lv_event_get_user_data(e);
   Serial.println("Clearing Wi-Fi creds and rebooting");
   WiFiManager wm;
@@ -648,11 +676,13 @@ static void reset_confirm_yes_cb(lv_event_t *e) {
 }
 
 static void reset_confirm_no_cb(lv_event_t *e) {
+  play_click_sound();
   lv_obj_t *mbox = (lv_obj_t *)lv_event_get_user_data(e);
   lv_obj_del(mbox);
 }
 
 static void change_location_event_cb(lv_event_t *e) {
+  play_click_sound();
   if (location_win) return;
 
   create_location_dialog();
@@ -889,6 +919,7 @@ void create_settings_window() {
 }
 
 static void settings_event_handler(lv_event_t *e) {
+  play_click_sound();
   lv_event_code_t code = lv_event_get_code(e);
   lv_obj_t *tgt = (lv_obj_t *)lv_event_get_target(e);
 
@@ -940,6 +971,10 @@ static void settings_event_handler(lv_event_t *e) {
 
     fetch_and_update_weather();
   }
+}
+
+void play_click_sound() {
+  tone(SPEAKER_PIN, 2200, 25);
 }
 
 // Screen dimming functions implementation
