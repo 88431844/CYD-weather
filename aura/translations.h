@@ -35,6 +35,15 @@ struct LocalizedStrings {
   const char* language_label;
   const char* weekdays[7];
   const char* use_night_mode;
+  const char* touch_calibration;
+  const char* calibration_instructions;
+  const char* calibration_progress;
+  const char* calibration_cancel;
+  const char* calibration_success;
+  const char* calibration_failed;
+  const char* sound_enabled;
+  const char* sound_effect;
+  const char* sound_effect_options;
 };
 
 #define DEFAULT_CAPTIVE_SSID "Aura"
@@ -65,7 +74,11 @@ static const LocalizedStrings strings_en = {
   "reconfigure Wi-Fi credentials.",
   "Language:",
   {"Sun", "Mon", "Tues", "Wed", "Thurs", "Fri", "Sat"},
-  "Dim screen at night"
+  "Dim screen at night",
+  "Touch Calibration", "Press each target in order.\nHold until accepted.",
+  "Point %d/5", "Cancel Calibration", "Touch calibration complete.",
+  "Touch calibration failed; previous settings kept.",
+  "Sound:", "Effect:", "Classic\nSoft\nDouble\nLow"
 };
 
 static const LocalizedStrings strings_es = {
@@ -96,7 +109,11 @@ static const LocalizedStrings strings_es = {
   "credenciales Wi-Fi.",
   "Idioma:",
   {"Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"},
-  "Pantalla noche"
+  "Pantalla noche",
+  "Calibración táctil", "Pulse cada objetivo en orden.\nMantenga pulsado hasta aceptar.",
+  "Punto %d/5", "Cancelar calibración", "Calibración táctil completa.",
+  "Calibración fallida; se conservaron los ajustes anteriores.",
+  "Sonido:", "Efecto:", "Classic\nSoft\nDouble\nLow"
 };
 
 static const LocalizedStrings strings_de = {
@@ -129,7 +146,11 @@ static const LocalizedStrings strings_de = {
   "neu zu konfigurieren.",
   "Sprache:",
   {"So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"},
-  "Nacht-Dimmen"
+  "Nacht-Dimmen",
+  "Touchscreen kalibrieren", "Drücken Sie die Ziele der Reihe nach.\nHalten Sie bis zur Bestätigung.",
+  "Punkt %d/5", "Kalibrierung abbrechen", "Touchscreen kalibriert.",
+  "Kalibrierung fehlgeschlagen; alte Einstellungen behalten.",
+  "Ton:", "Effekt:", "Classic\nSoft\nDouble\nLow"
 };
 
 static const LocalizedStrings strings_fr = {
@@ -162,7 +183,11 @@ static const LocalizedStrings strings_fr = {
   "les identifiants Wi-Fi.",
   "Langue:",
   {"Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"},
-  "Nuit écran"
+  "Nuit écran",
+  "Calibration tactile", "Touchez chaque cible dans l'ordre.\nMaintenez jusqu'à validation.",
+  "Point %d/5", "Annuler la calibration", "Calibration tactile terminée.",
+  "Échec de la calibration; anciens réglages conservés.",
+  "Son:", "Effet:", "Classic\nSoft\nDouble\nLow"
 };
 
 static const LocalizedStrings strings_tr = {
@@ -192,7 +217,11 @@ static const LocalizedStrings strings_tr = {
   "gerekecek.",
   "Dil:",
   {"Paz", "Pzt", "Sal", "Çar", "Per", "Cum", "Cmt"},
-  "Gece kısık"
+  "Gece kısık",
+  "Dokunmatik kalibrasyonu", "Hedeflere sırayla basın.\nKabul edilene kadar basılı tutun.",
+  "Nokta %d/5", "Kalibrasyonu iptal et", "Dokunmatik kalibrasyonu tamamlandı.",
+  "Kalibrasyon başarısız; önceki ayarlar korundu.",
+  "Ses:", "Efekt:", "Classic\nSoft\nDouble\nLow"
 };
 
 static const LocalizedStrings strings_sv = {
@@ -226,7 +255,11 @@ static const LocalizedStrings strings_sv = {
   "autentiseringsuppgifter.",
   "Sprak:",
   {"Sön", "Man", "Tis", "Ons", "Tor", "Fre", "Lör"},
-  "Nattdämpning"
+  "Nattdämpning",
+  "Pekskärmskalibrering", "Tryck på varje mål i ordning.\nHåll tills det godkänns.",
+  "Punkt %d/5", "Avbryt kalibrering", "Pekskärmen är kalibrerad.",
+  "Kalibrering misslyckades; tidigare inställningar behölls.",
+  "Ljud:", "Effekt:", "Classic\nSoft\nDouble\nLow"
 };
 
 static const LocalizedStrings strings_it = {
@@ -255,7 +288,11 @@ static const LocalizedStrings strings_it = {
   "riconfigurare le credenziali Wi-Fi.",
   "Lingua:",
   {"Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"},
-  "Schermo notte"
+  "Schermo notte",
+  "Calibrazione touch", "Premi ogni obiettivo in ordine.\nTieni premuto fino all'accettazione.",
+  "Punto %d/5", "Annulla calibrazione", "Calibrazione touch completata.",
+  "Calibrazione fallita; impostazioni precedenti mantenute.",
+  "Suono:", "Effetto:", "Classic\nSoft\nDouble\nLow"
 };
 
 static const LocalizedStrings strings_zh = {
@@ -280,7 +317,11 @@ static const LocalizedStrings strings_zh = {
   "，然后重新配置 Wi-Fi。",
   "语言:",
   {"周日", "周一", "周二", "周三", "周四", "周五", "周六"},
-  "夜间调暗"
+  "夜间调暗",
+  "点调", "请点五点。",
+  "点 %d/5", "取消", "点调",
+  "重调，设置",
+  "Sound:", "效果:", "Classic\nSoft\nDouble\nLow"
 };
 
 static const LocalizedStrings* get_strings(Language current_language) {

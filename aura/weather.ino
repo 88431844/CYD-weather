@@ -26,6 +26,7 @@
 #include <Preferences.h>
 #include "esp_system.h"
 #include "translations.h"
+#include "touch_calibration.h"
 
 #define XPT2046_IRQ 36   // T_IRQ
 #define XPT2046_MOSI 32  // T_DIN
@@ -38,15 +39,31 @@
 #define SCREEN_HEIGHT 320
 #define DRAW_BUF_SIZE (SCREEN_WIDTH * SCREEN_HEIGHT / 10 * (LV_COLOR_DEPTH / 8))
 
-#define LATITUDE_DEFAULT "51.5074"
-#define LONGITUDE_DEFAULT "-0.1278"
-#define LOCATION_DEFAULT "London"
+#define LATITUDE_DEFAULT "22.5431"
+#define LONGITUDE_DEFAULT "114.0579"
+#define LOCATION_DEFAULT "Shenzhen"
 #define DEFAULT_CAPTIVE_SSID "Aura"
 #define UPDATE_INTERVAL 600000UL  // 10 minutes
 
 // Night mode starts at 10pm and ends at 6am
 #define NIGHT_MODE_START_HOUR 22
 #define NIGHT_MODE_END_HOUR 6
+
+#define TOUCH_CALIBRATION_SAMPLE_COUNT 12
+#define TOUCH_CALIBRATION_MIN_SAMPLES 8
+#define TOUCH_CALIBRATION_TIMEOUT_MS 120000UL
+#define TOUCH_CALIBRATION_RELEASE_MS 80UL
+#define TOUCH_CALIBRATION_RAW_MIN 0
+#define TOUCH_CALIBRATION_RAW_MAX 4095
+
+static const TouchScreenPoint TOUCH_CALIBRATION_TARGETS[] = {
+  {24, 44}, {216, 44}, {120, 160}, {24, 276}, {216, 276}
+};
+
+enum TouchCalibrationState {
+  TOUCH_CALIBRATION_WAIT_PRESS,
+  TOUCH_CALIBRATION_WAIT_RELEASE
+};
 
 LV_FONT_DECLARE(lv_font_montserrat_latin_12);
 LV_FONT_DECLARE(lv_font_montserrat_latin_14);
@@ -92,6 +109,8 @@ static Preferences prefs;
 static bool use_fahrenheit = false;
 static bool use_24_hour = false; 
 static bool use_night_mode = false;
+static bool sound_enabled = true;
+static uint8_t sound_effect = 0;
 static char latitude[16] = LATITUDE_DEFAULT;
 static char longitude[16] = LONGITUDE_DEFAULT;
 static String location = String(LOCATION_DEFAULT);
@@ -132,6 +151,25 @@ static lv_obj_t *clock_24hr_switch;
 static lv_obj_t *night_mode_switch;
 static lv_obj_t *language_dropdown;
 static lv_obj_t *lbl_clock;
+static lv_obj_t *touch_calibration_btn;
+static lv_obj_t *sound_enabled_switch;
+static lv_obj_t *sound_effect_dropdown;
+
+// Touch calibration state is kept separate from the last saved transform.
+static TouchCalibration touch_calibration = {};
+static TouchRawPoint calibration_samples[TOUCH_CALIBRATION_SAMPLE_COUNT];
+static TouchRawPoint calibration_points[5];
+static uint8_t calibration_sample_count = 0;
+static uint8_t calibration_target_index = 0;
+static TouchCalibrationState calibration_state = TOUCH_CALIBRATION_WAIT_PRESS;
+static bool calibration_active = false;
+static bool calibration_raw_pressed = false;
+static uint32_t calibration_last_touch_ms = 0;
+static uint32_t calibration_started_ms = 0;
+static lv_obj_t *calibration_overlay = nullptr;
+static lv_obj_t *calibration_target = nullptr;
+static lv_obj_t *calibration_progress_label = nullptr;
+static lv_timer_t *calibration_timer = nullptr;
 
 // Weather icons
 LV_IMG_DECLARE(icon_blizzard);
@@ -193,6 +231,9 @@ void create_ui();
 void fetch_and_update_weather();
 void create_settings_window();
 void play_click_sound();
+static void start_touch_calibration();
+static void finish_touch_calibration(bool success);
+static void calibration_timer_cb(lv_timer_t *timer);
 static void screen_event_cb(lv_event_t *e);
 static void settings_event_handler(lv_event_t *e);
 const lv_img_dsc_t *choose_image(int wmo_code, int is_day);
@@ -298,6 +339,60 @@ static void ta_defocus_cb(lv_event_t *e) {
   lv_obj_add_flag((lv_obj_t *)lv_event_get_user_data(e), LV_OBJ_FLAG_HIDDEN);
 }
 
+static bool raw_touch_point_valid(int raw_x, int raw_y) {
+  return raw_x >= TOUCH_CALIBRATION_RAW_MIN && raw_x <= TOUCH_CALIBRATION_RAW_MAX &&
+         raw_y >= TOUCH_CALIBRATION_RAW_MIN && raw_y <= TOUCH_CALIBRATION_RAW_MAX;
+}
+
+static void load_touch_calibration() {
+  touch_calibration.valid = prefs.getBool("touchCalibrated", false);
+  touch_calibration.a = prefs.getFloat("touchCalA", 0.0f);
+  touch_calibration.b = prefs.getFloat("touchCalB", 0.0f);
+  touch_calibration.c = prefs.getFloat("touchCalC", 0.0f);
+  touch_calibration.d = prefs.getFloat("touchCalD", 0.0f);
+  touch_calibration.e = prefs.getFloat("touchCalE", 0.0f);
+  touch_calibration.f = prefs.getFloat("touchCalF", 0.0f);
+}
+
+static void save_touch_calibration(const TouchCalibration &calibration) {
+  prefs.putFloat("touchCalA", calibration.a);
+  prefs.putFloat("touchCalB", calibration.b);
+  prefs.putFloat("touchCalC", calibration.c);
+  prefs.putFloat("touchCalD", calibration.d);
+  prefs.putFloat("touchCalE", calibration.e);
+  prefs.putFloat("touchCalF", calibration.f);
+  prefs.putBool("touchCalibrated", true);
+}
+
+static bool calibration_samples_are_stable() {
+  if (calibration_sample_count < TOUCH_CALIBRATION_MIN_SAMPLES) return false;
+
+  int min_x = TOUCH_CALIBRATION_RAW_MAX;
+  int max_x = TOUCH_CALIBRATION_RAW_MIN;
+  int min_y = TOUCH_CALIBRATION_RAW_MAX;
+  int max_y = TOUCH_CALIBRATION_RAW_MIN;
+  for (uint8_t i = 0; i < calibration_sample_count; i++) {
+    min_x = min(min_x, static_cast<int>(calibration_samples[i].x));
+    max_x = max(max_x, static_cast<int>(calibration_samples[i].x));
+    min_y = min(min_y, static_cast<int>(calibration_samples[i].y));
+    max_y = max(max_y, static_cast<int>(calibration_samples[i].y));
+  }
+  return (max_x - min_x) <= 100 && (max_y - min_y) <= 100;
+}
+
+static TouchRawPoint average_calibration_samples() {
+  float sum_x = 0.0f;
+  float sum_y = 0.0f;
+  for (uint8_t i = 0; i < calibration_sample_count; i++) {
+    sum_x += calibration_samples[i].x;
+    sum_y += calibration_samples[i].y;
+  }
+  return {
+    sum_x / calibration_sample_count,
+    sum_y / calibration_sample_count
+  };
+}
+
 void touchscreen_read(lv_indev_t *indev, lv_indev_data_t *data) {
   if (touchscreen.tirqTouched() && touchscreen.touched()) {
     TS_Point p = touchscreen.getPoint();
@@ -306,8 +401,29 @@ void touchscreen_read(lv_indev_t *indev, lv_indev_data_t *data) {
     y = map(p.y, 240, 3800, 1, SCREEN_HEIGHT);
     z = p.z;
 
+    if (calibration_active) {
+      calibration_raw_pressed = true;
+      calibration_last_touch_ms = millis();
+      if (calibration_state == TOUCH_CALIBRATION_WAIT_PRESS &&
+          calibration_sample_count < TOUCH_CALIBRATION_SAMPLE_COUNT &&
+          raw_touch_point_valid(p.x, p.y)) {
+        calibration_samples[calibration_sample_count++] = {
+          static_cast<float>(p.x), static_cast<float>(p.y)
+        };
+      }
+    } else if (touch_calibration.valid) {
+      int calibrated_x = 0;
+      int calibrated_y = 0;
+      if (apply_touch_calibration(touch_calibration, p.x, p.y,
+                                  SCREEN_WIDTH, SCREEN_HEIGHT,
+                                  &calibrated_x, &calibrated_y)) {
+        x = calibrated_x;
+        y = calibrated_y;
+      }
+    }
+
     // Handle touch during dimmed screen
-    if (night_mode_active) {
+    if (!calibration_active && night_mode_active) {
       // Temporarily wake the screen for 15 seconds
       analogWrite(LCD_BACKLIGHT_PIN, prefs.getUInt("brightness", 128));
     
@@ -332,6 +448,7 @@ void touchscreen_read(lv_indev_t *indev, lv_indev_data_t *data) {
     data->point.x = x;
     data->point.y = y;
   } else {
+    if (calibration_active) calibration_raw_pressed = false;
     data->state = LV_INDEV_STATE_RELEASED;
   }
 }
@@ -360,15 +477,28 @@ void setup() {
   // Load saved prefs
   prefs.begin("weather", false);
   String lat = prefs.getString("latitude", LATITUDE_DEFAULT);
-  lat.toCharArray(latitude, sizeof(latitude));
   String lon = prefs.getString("longitude", LONGITUDE_DEFAULT);
-  lon.toCharArray(longitude, sizeof(longitude));
   use_fahrenheit = prefs.getBool("useFahrenheit", false);
   location = prefs.getString("location", LOCATION_DEFAULT);
+  // Move the original untouched London defaults to Shenzhen without changing
+  // a city that the user selected explicitly.
+  if (lat == "51.5074" && lon == "-0.1278" && location == "London") {
+    lat = LATITUDE_DEFAULT;
+    lon = LONGITUDE_DEFAULT;
+    location = LOCATION_DEFAULT;
+    prefs.putString("latitude", lat);
+    prefs.putString("longitude", lon);
+    prefs.putString("location", location);
+  }
+  lat.toCharArray(latitude, sizeof(latitude));
+  lon.toCharArray(longitude, sizeof(longitude));
   use_night_mode = prefs.getBool("useNightMode", false);
   uint32_t brightness = prefs.getUInt("brightness", 255);
   use_24_hour = prefs.getBool("use24Hour", false);
+  sound_enabled = prefs.getBool("soundEnabled", true);
+  sound_effect = constrain(prefs.getUInt("soundEffect", 0), 0, 3);
   current_language = (Language)prefs.getUInt("language", LANG_ZH);
+  load_touch_calibration();
   analogWrite(LCD_BACKLIGHT_PIN, brightness);
 
   // Check for Wi-Fi config and request it if not available
@@ -615,6 +745,157 @@ void screen_event_cb(lv_event_t *e) {
   create_settings_window();
 }
 
+static void update_calibration_target() {
+  const LocalizedStrings* strings = get_strings(current_language);
+  if (calibration_target) {
+    lv_obj_del(calibration_target);
+    calibration_target = nullptr;
+  }
+
+  calibration_target = lv_obj_create(calibration_overlay);
+  lv_obj_set_size(calibration_target, 28, 28);
+  lv_obj_set_pos(calibration_target,
+                 static_cast<int>(TOUCH_CALIBRATION_TARGETS[calibration_target_index].x) - 14,
+                 static_cast<int>(TOUCH_CALIBRATION_TARGETS[calibration_target_index].y) - 14);
+  lv_obj_set_style_bg_color(calibration_target, lv_palette_main(LV_PALETTE_RED),
+                            LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_bg_opa(calibration_target, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_border_color(calibration_target, lv_color_white(), LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_border_width(calibration_target, 2, LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_radius(calibration_target, 14, LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_clear_flag(calibration_target, LV_OBJ_FLAG_CLICKABLE);
+  lv_label_set_text_fmt(calibration_progress_label, strings->calibration_progress,
+                        calibration_target_index + 1);
+}
+
+static void calibration_cancel_event_cb(lv_event_t *e) {
+  play_click_sound();
+  finish_touch_calibration(false);
+}
+
+static void finish_touch_calibration(bool success) {
+  if (success) {
+    TouchScreenPoint targets[5];
+    for (uint8_t i = 0; i < 5; i++) targets[i] = TOUCH_CALIBRATION_TARGETS[i];
+
+    TouchCalibration fitted = {};
+    if (!fit_touch_calibration(calibration_points, targets, 5, &fitted)) {
+      success = false;
+    } else {
+      touch_calibration = fitted;
+      save_touch_calibration(touch_calibration);
+    }
+  }
+
+  if (calibration_timer) {
+    lv_timer_del(calibration_timer);
+    calibration_timer = nullptr;
+  }
+  calibration_active = false;
+  calibration_raw_pressed = false;
+  calibration_sample_count = 0;
+
+  if (calibration_overlay) {
+    lv_obj_del(calibration_overlay);
+    calibration_overlay = nullptr;
+    calibration_target = nullptr;
+    calibration_progress_label = nullptr;
+  }
+  if (settings_win) lv_obj_clear_flag(settings_win, LV_OBJ_FLAG_HIDDEN);
+
+  const LocalizedStrings* strings = get_strings(current_language);
+  lv_obj_t *mbox = lv_msgbox_create(lv_scr_act());
+  lv_obj_t *title = lv_msgbox_add_title(mbox, strings->touch_calibration);
+  lv_obj_set_style_text_font(title, get_font_16(), 0);
+  lv_obj_t *text = lv_msgbox_add_text(
+      mbox, success ? strings->calibration_success : strings->calibration_failed);
+  lv_obj_set_style_text_font(text, get_font_12(), 0);
+  lv_msgbox_add_close_button(mbox);
+  lv_obj_set_width(mbox, 230);
+  lv_obj_center(mbox);
+}
+
+static void calibration_timer_cb(lv_timer_t *timer) {
+  if (!calibration_active) return;
+  if (millis() - calibration_started_ms >= TOUCH_CALIBRATION_TIMEOUT_MS) {
+    finish_touch_calibration(false);
+    return;
+  }
+
+  if (calibration_state == TOUCH_CALIBRATION_WAIT_PRESS) {
+    if (calibration_sample_count >= TOUCH_CALIBRATION_MIN_SAMPLES &&
+        calibration_sample_count >= TOUCH_CALIBRATION_SAMPLE_COUNT) {
+      if (calibration_samples_are_stable()) {
+        calibration_points[calibration_target_index] = average_calibration_samples();
+        calibration_sample_count = 0;
+        calibration_state = TOUCH_CALIBRATION_WAIT_RELEASE;
+        play_click_sound();
+      } else {
+        calibration_sample_count = 0;
+      }
+    }
+  } else if (!calibration_raw_pressed &&
+             millis() - calibration_last_touch_ms >= TOUCH_CALIBRATION_RELEASE_MS) {
+    if (calibration_target_index == 4) {
+      finish_touch_calibration(true);
+    } else {
+      calibration_target_index++;
+      calibration_state = TOUCH_CALIBRATION_WAIT_PRESS;
+      update_calibration_target();
+    }
+  }
+}
+
+static void start_touch_calibration() {
+  if (calibration_active || !settings_win) return;
+
+  const LocalizedStrings* strings = get_strings(current_language);
+  lv_obj_add_flag(settings_win, LV_OBJ_FLAG_HIDDEN);
+  calibration_active = true;
+  calibration_raw_pressed = false;
+  calibration_started_ms = millis();
+  calibration_last_touch_ms = calibration_started_ms;
+  calibration_sample_count = 0;
+  calibration_target_index = 0;
+  calibration_state = TOUCH_CALIBRATION_WAIT_PRESS;
+
+  calibration_overlay = lv_obj_create(lv_scr_act());
+  lv_obj_set_size(calibration_overlay, SCREEN_WIDTH, SCREEN_HEIGHT);
+  lv_obj_set_pos(calibration_overlay, 0, 0);
+  lv_obj_set_style_bg_color(calibration_overlay, lv_color_hex(0x183246),
+                            LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_bg_opa(calibration_overlay, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_clear_flag(calibration_overlay, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(calibration_overlay, LV_OBJ_FLAG_CLICKABLE);
+
+  lv_obj_t *instructions = lv_label_create(calibration_overlay);
+  lv_label_set_text(instructions, strings->calibration_instructions);
+  lv_obj_set_width(instructions, 220);
+  lv_obj_set_style_text_font(instructions, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_color(instructions, lv_color_white(), LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_align(instructions, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_align(instructions, LV_ALIGN_TOP_MID, 0, 3);
+
+  calibration_progress_label = lv_label_create(calibration_overlay);
+  lv_obj_set_style_text_font(calibration_progress_label, get_font_12(),
+                             LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_color(calibration_progress_label, lv_color_white(),
+                              LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_align(calibration_progress_label, LV_ALIGN_TOP_MID, 0, 25);
+
+  lv_obj_t *cancel = lv_btn_create(calibration_overlay);
+  lv_obj_set_size(cancel, 108, 32);
+  lv_obj_align(cancel, LV_ALIGN_BOTTOM_MID, 0, -3);
+  lv_obj_add_event_cb(cancel, calibration_cancel_event_cb, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t *cancel_label = lv_label_create(cancel);
+  lv_label_set_text(cancel_label, strings->calibration_cancel);
+  lv_obj_set_style_text_font(cancel_label, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_center(cancel_label);
+
+  update_calibration_target();
+  calibration_timer = lv_timer_create(calibration_timer_cb, 20, nullptr);
+}
+
 void daily_cb(lv_event_t *e) {
   play_click_sound();
   const LocalizedStrings* strings = get_strings(current_language);
@@ -761,34 +1042,66 @@ void create_location_dialog() {
 void create_settings_window() {
   if (settings_win) return;
 
-  int vertical_element_spacing = 21;
-
   const LocalizedStrings* strings = get_strings(current_language);
   settings_win = lv_win_create(lv_scr_act());
-
+  lv_obj_set_size(settings_win, SCREEN_WIDTH, SCREEN_HEIGHT);
+  lv_obj_center(settings_win);
   lv_obj_t *header = lv_win_get_header(settings_win);
   lv_obj_set_style_height(header, 30, 0);
-
   lv_obj_t *title = lv_win_add_title(settings_win, strings->aura_settings);
   lv_obj_set_style_text_font(title, get_font_16(), 0);
   lv_obj_set_style_margin_left(title, 10, 0);
 
-  lv_obj_center(settings_win);
-  lv_obj_set_width(settings_win, 240);
+  btn_close_obj = lv_btn_create(header);
+  lv_obj_set_size(btn_close_obj, 30, LV_PCT(100));
+  lv_obj_set_style_bg_opa(btn_close_obj, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_border_width(btn_close_obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_add_event_cb(btn_close_obj, settings_event_handler, LV_EVENT_CLICKED, NULL);
+  lv_obj_t *close_label = lv_label_create(btn_close_obj);
+  lv_label_set_text(close_label, "X");
+  lv_obj_set_style_text_font(close_label, get_font_16(), LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_color(close_label, lv_color_white(), LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_center(close_label);
 
   lv_obj_t *cont = lv_win_get_content(settings_win);
 
+  // The content is intentionally taller than the display. Flex rows keep
+  // each control in its own lane, while the window provides vertical scrolling.
+  lv_obj_set_scroll_dir(cont, LV_DIR_VER);
+  lv_obj_set_scrollbar_mode(cont, LV_SCROLLBAR_MODE_AUTO);
+  lv_obj_set_layout(cont, LV_LAYOUT_FLEX);
+  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
+  lv_obj_set_style_pad_all(cont, 6, LV_PART_MAIN);
+  lv_obj_set_style_pad_row(cont, 4, LV_PART_MAIN);
+
+  auto create_row = [&](int height) {
+    lv_obj_t *row = lv_obj_create(cont);
+    lv_obj_set_width(row, 214);
+    lv_obj_set_height(row, height);
+    lv_obj_set_style_pad_all(row, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(row, 0, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    return row;
+  };
+
+  auto style_label = [&](lv_obj_t *label) {
+    lv_obj_set_style_text_font(label, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_align(label, LV_ALIGN_LEFT_MID, 0, 0);
+  };
+
   // Brightness
-  lv_obj_t *lbl_b = lv_label_create(cont);
+  lv_obj_t *brightness_row = create_row(38);
+  lv_obj_t *lbl_b = lv_label_create(brightness_row);
   lv_label_set_text(lbl_b, strings->brightness);
-  lv_obj_set_style_text_font(lbl_b, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_align(lbl_b, LV_ALIGN_TOP_LEFT, 0, 5);
-  lv_obj_t *slider = lv_slider_create(cont);
+  style_label(lbl_b);
+  lv_obj_t *slider = lv_slider_create(brightness_row);
   lv_slider_set_range(slider, 1, 255);
   uint32_t saved_b = prefs.getUInt("brightness", 128);
   lv_slider_set_value(slider, saved_b, LV_ANIM_OFF);
   lv_obj_set_width(slider, 100);
-  lv_obj_align_to(slider, lbl_b, LV_ALIGN_OUT_RIGHT_MID, 10, 0);
+  lv_obj_align(slider, LV_ALIGN_RIGHT_MID, 0, 0);
 
   lv_obj_add_event_cb(slider, [](lv_event_t *e){
     lv_obj_t *s = (lv_obj_t*)lv_event_get_target(e);
@@ -797,84 +1110,106 @@ void create_settings_window() {
     prefs.putUInt("brightness", v);
   }, LV_EVENT_VALUE_CHANGED, NULL);
 
-  // 'Night mode' switch
-  lv_obj_t *lbl_night_mode = lv_label_create(cont);
+  // Night mode
+  lv_obj_t *night_row = create_row(34);
+  lv_obj_t *lbl_night_mode = lv_label_create(night_row);
   lv_label_set_text(lbl_night_mode, strings->use_night_mode);
-  lv_obj_set_style_text_font(lbl_night_mode, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_align_to(lbl_night_mode, lbl_b, LV_ALIGN_OUT_BOTTOM_LEFT, 0, vertical_element_spacing);
-
-  night_mode_switch = lv_switch_create(cont);
-  lv_obj_align_to(night_mode_switch, lbl_night_mode, LV_ALIGN_OUT_RIGHT_MID, 6, 0);
-  if (use_night_mode) {
-    lv_obj_add_state(night_mode_switch, LV_STATE_CHECKED);
-  } else {
-    lv_obj_remove_state(night_mode_switch, LV_STATE_CHECKED);
-  }
+  style_label(lbl_night_mode);
+  night_mode_switch = lv_switch_create(night_row);
+  lv_obj_align(night_mode_switch, LV_ALIGN_RIGHT_MID, 0, 0);
+  if (use_night_mode) lv_obj_add_state(night_mode_switch, LV_STATE_CHECKED);
   lv_obj_add_event_cb(night_mode_switch, settings_event_handler, LV_EVENT_VALUE_CHANGED, NULL);
 
-  // 'Use F' switch
-  lv_obj_t *lbl_u = lv_label_create(cont);
+  // Fahrenheit
+  lv_obj_t *fahrenheit_row = create_row(34);
+  lv_obj_t *lbl_u = lv_label_create(fahrenheit_row);
   lv_label_set_text(lbl_u, strings->use_fahrenheit);
-  lv_obj_set_style_text_font(lbl_u, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_align_to(lbl_u, lbl_night_mode, LV_ALIGN_OUT_BOTTOM_LEFT, 0, vertical_element_spacing);
-
-  unit_switch = lv_switch_create(cont);
-  lv_obj_align_to(unit_switch, lbl_u, LV_ALIGN_OUT_RIGHT_MID, 6, 0);
-  if (use_fahrenheit) {
-    lv_obj_add_state(unit_switch, LV_STATE_CHECKED);
-  } else {
-    lv_obj_remove_state(unit_switch, LV_STATE_CHECKED);
-  }
+  style_label(lbl_u);
+  unit_switch = lv_switch_create(fahrenheit_row);
+  lv_obj_align(unit_switch, LV_ALIGN_RIGHT_MID, 0, 0);
+  if (use_fahrenheit) lv_obj_add_state(unit_switch, LV_STATE_CHECKED);
   lv_obj_add_event_cb(unit_switch, settings_event_handler, LV_EVENT_VALUE_CHANGED, NULL);
 
-  // 24-hr time switch
-  lv_obj_t *lbl_24hr = lv_label_create(cont);
+  // 24-hour clock
+  lv_obj_t *clock_row = create_row(34);
+  lv_obj_t *lbl_24hr = lv_label_create(clock_row);
   lv_label_set_text(lbl_24hr, strings->use_24hr);
-  lv_obj_set_style_text_font(lbl_24hr, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_align_to(lbl_24hr, unit_switch, LV_ALIGN_OUT_RIGHT_MID, 6, 0);
-
-  clock_24hr_switch = lv_switch_create(cont);
-  lv_obj_align_to(clock_24hr_switch, lbl_24hr, LV_ALIGN_OUT_RIGHT_MID, 6, 0);
-  if (use_24_hour) {
-    lv_obj_add_state(clock_24hr_switch, LV_STATE_CHECKED);
-  } else {
-    lv_obj_clear_state(clock_24hr_switch, LV_STATE_CHECKED);
-  }
+  style_label(lbl_24hr);
+  clock_24hr_switch = lv_switch_create(clock_row);
+  lv_obj_align(clock_24hr_switch, LV_ALIGN_RIGHT_MID, 0, 0);
+  if (use_24_hour) lv_obj_add_state(clock_24hr_switch, LV_STATE_CHECKED);
   lv_obj_add_event_cb(clock_24hr_switch, settings_event_handler, LV_EVENT_VALUE_CHANGED, NULL);
 
   // Current Location label
-  lv_obj_t *lbl_loc_l = lv_label_create(cont);
+  lv_obj_t *location_row = create_row(34);
+  lv_obj_t *lbl_loc_l = lv_label_create(location_row);
   lv_label_set_text(lbl_loc_l, strings->location);
-  lv_obj_set_style_text_font(lbl_loc_l, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_align_to(lbl_loc_l, lbl_u, LV_ALIGN_OUT_BOTTOM_LEFT, 0, vertical_element_spacing);
-
-  lbl_loc = lv_label_create(cont);
+  style_label(lbl_loc_l);
+  lbl_loc = lv_label_create(location_row);
   lv_label_set_text(lbl_loc, location.c_str());
   lv_obj_set_style_text_font(lbl_loc, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_align_to(lbl_loc, lbl_loc_l, LV_ALIGN_OUT_RIGHT_MID, 5, 0);
+  lv_label_set_long_mode(lbl_loc, LV_LABEL_LONG_DOT);
+  lv_obj_set_width(lbl_loc, 135);
+  lv_obj_align(lbl_loc, LV_ALIGN_RIGHT_MID, 0, 0);
+  lv_obj_set_style_text_align(lbl_loc, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
 
   // Language selection
-  lv_obj_t *lbl_lang = lv_label_create(cont);
+  lv_obj_t *language_row = create_row(42);
+  lv_obj_t *lbl_lang = lv_label_create(language_row);
   lv_label_set_text(lbl_lang, strings->language_label);
-  lv_obj_set_style_text_font(lbl_lang, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_align_to(lbl_lang, lbl_loc_l, LV_ALIGN_OUT_BOTTOM_LEFT, 0, vertical_element_spacing);
+  style_label(lbl_lang);
 
-  language_dropdown = lv_dropdown_create(cont);
+  language_dropdown = lv_dropdown_create(language_row);
   lv_dropdown_set_options(language_dropdown, "English\nEspañol\nDeutsch\nFrançais\nTürkçe\nSvenska\nItaliano\n简体中文");
   lv_dropdown_set_selected(language_dropdown, current_language);
-  lv_obj_set_width(language_dropdown, 120);
+  lv_obj_set_width(language_dropdown, 132);
   lv_obj_set_style_text_font(language_dropdown, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_text_font(language_dropdown, get_font_12(), LV_PART_SELECTED | LV_STATE_DEFAULT);
   lv_obj_t *list = lv_dropdown_get_list(language_dropdown);
   lv_obj_set_style_text_font(list, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_align_to(language_dropdown, lbl_lang, LV_ALIGN_OUT_RIGHT_MID, 10, 0);
+  lv_obj_align(language_dropdown, LV_ALIGN_RIGHT_MID, 0, 0);
   lv_obj_add_event_cb(language_dropdown, settings_event_handler, LV_EVENT_VALUE_CHANGED, NULL);
 
-  // Location search button
-  lv_obj_t *btn_change_loc = lv_btn_create(cont);
-  lv_obj_align_to(btn_change_loc, lbl_lang, LV_ALIGN_OUT_BOTTOM_LEFT, 0, vertical_element_spacing);
+  // Sound enable
+  lv_obj_t *sound_row = create_row(34);
+  lv_obj_t *lbl_sound = lv_label_create(sound_row);
+  lv_label_set_text(lbl_sound, strings->sound_enabled);
+  style_label(lbl_sound);
+  sound_enabled_switch = lv_switch_create(sound_row);
+  lv_obj_align(sound_enabled_switch, LV_ALIGN_RIGHT_MID, 0, 0);
+  if (sound_enabled) lv_obj_add_state(sound_enabled_switch, LV_STATE_CHECKED);
+  lv_obj_add_event_cb(sound_enabled_switch, settings_event_handler, LV_EVENT_VALUE_CHANGED, NULL);
 
-  lv_obj_set_size(btn_change_loc, 100, 40);
+  // Sound effect
+  lv_obj_t *effect_row = create_row(42);
+  lv_obj_t *lbl_effect = lv_label_create(effect_row);
+  lv_label_set_text(lbl_effect, strings->sound_effect);
+  style_label(lbl_effect);
+  sound_effect_dropdown = lv_dropdown_create(effect_row);
+  lv_dropdown_set_options(sound_effect_dropdown, strings->sound_effect_options);
+  lv_dropdown_set_selected(sound_effect_dropdown, sound_effect);
+  lv_obj_set_width(sound_effect_dropdown, 132);
+  lv_obj_set_style_text_font(sound_effect_dropdown, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_font(sound_effect_dropdown, get_font_12(), LV_PART_SELECTED | LV_STATE_DEFAULT);
+  lv_obj_t *effect_list = lv_dropdown_get_list(sound_effect_dropdown);
+  lv_obj_set_style_text_font(effect_list, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_align(sound_effect_dropdown, LV_ALIGN_RIGHT_MID, 0, 0);
+  lv_obj_add_event_cb(sound_effect_dropdown, settings_event_handler, LV_EVENT_VALUE_CHANGED, NULL);
+
+  // Touch calibration button
+  lv_obj_t *calibration_row = create_row(38);
+  touch_calibration_btn = lv_btn_create(calibration_row);
+  lv_obj_set_size(touch_calibration_btn, 204, 34);
+  lv_obj_add_event_cb(touch_calibration_btn, settings_event_handler, LV_EVENT_CLICKED, NULL);
+  lv_obj_t *lbl_calibrate = lv_label_create(touch_calibration_btn);
+  lv_label_set_text(lbl_calibrate, strings->touch_calibration);
+  lv_obj_set_style_text_font(lbl_calibrate, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_center(lbl_calibrate);
+
+  // Location search button
+  lv_obj_t *location_button_row = create_row(38);
+  lv_obj_t *btn_change_loc = lv_btn_create(location_button_row);
+  lv_obj_set_size(btn_change_loc, 204, 34);
   lv_obj_add_event_cb(btn_change_loc, change_location_event_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *lbl_chg = lv_label_create(btn_change_loc);
   lv_label_set_text(lbl_chg, strings->location_btn);
@@ -891,12 +1226,12 @@ void create_settings_window() {
   }
 
   // Reset WiFi button
-  lv_obj_t *btn_reset = lv_btn_create(cont);
+  lv_obj_t *reset_row = create_row(38);
+  lv_obj_t *btn_reset = lv_btn_create(reset_row);
   lv_obj_set_style_bg_color(btn_reset, lv_palette_main(LV_PALETTE_RED), LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_bg_color(btn_reset, lv_palette_darken(LV_PALETTE_RED, 1), LV_PART_MAIN | LV_STATE_PRESSED);
   lv_obj_set_style_text_color(btn_reset, lv_color_white(), LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_size(btn_reset, 100, 40);
-  lv_obj_align_to(btn_reset, btn_change_loc, LV_ALIGN_OUT_RIGHT_MID, 12, 0);
+  lv_obj_set_size(btn_reset, 204, 34);
 
   lv_obj_add_event_cb(btn_reset, reset_wifi_event_handler, LV_EVENT_CLICKED, nullptr);
 
@@ -905,23 +1240,17 @@ void create_settings_window() {
   lv_obj_set_style_text_font(lbl_reset, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_center(lbl_reset);
 
-  // Close Settings button
-  btn_close_obj = lv_btn_create(cont);
-  lv_obj_set_size(btn_close_obj, 80, 40);
-  lv_obj_align(btn_close_obj, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
-  lv_obj_add_event_cb(btn_close_obj, settings_event_handler, LV_EVENT_CLICKED, NULL);
-
-  // Cancel button
-  lv_obj_t *lbl_btn = lv_label_create(btn_close_obj);
-  lv_label_set_text(lbl_btn, strings->close);
-  lv_obj_set_style_text_font(lbl_btn, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_center(lbl_btn);
 }
 
 static void settings_event_handler(lv_event_t *e) {
   play_click_sound();
   lv_event_code_t code = lv_event_get_code(e);
   lv_obj_t *tgt = (lv_obj_t *)lv_event_get_target(e);
+
+  if (tgt == touch_calibration_btn && code == LV_EVENT_CLICKED) {
+    start_touch_calibration();
+    return;
+  }
 
   if (tgt == unit_switch && code == LV_EVENT_VALUE_CHANGED) {
     use_fahrenheit = lv_obj_has_state(unit_switch, LV_STATE_CHECKED);
@@ -935,6 +1264,14 @@ static void settings_event_handler(lv_event_t *e) {
     use_night_mode = lv_obj_has_state(night_mode_switch, LV_STATE_CHECKED);
   }
 
+  if (tgt == sound_enabled_switch && code == LV_EVENT_VALUE_CHANGED) {
+    sound_enabled = lv_obj_has_state(sound_enabled_switch, LV_STATE_CHECKED);
+  }
+
+  if (tgt == sound_effect_dropdown && code == LV_EVENT_VALUE_CHANGED) {
+    sound_effect = lv_dropdown_get_selected(sound_effect_dropdown);
+  }
+
   if (tgt == language_dropdown && code == LV_EVENT_VALUE_CHANGED) {
     current_language = (Language)lv_dropdown_get_selected(language_dropdown);
     // Update the UI immediately to reflect language change
@@ -945,6 +1282,8 @@ static void settings_event_handler(lv_event_t *e) {
     prefs.putBool("useFahrenheit", use_fahrenheit);
     prefs.putBool("use24Hour", use_24_hour);
     prefs.putBool("useNightMode", use_night_mode);
+    prefs.putBool("soundEnabled", sound_enabled);
+    prefs.putUInt("soundEffect", sound_effect);
     prefs.putUInt("language", current_language);
 
     lv_keyboard_set_textarea(kb, nullptr);
@@ -961,6 +1300,8 @@ static void settings_event_handler(lv_event_t *e) {
     prefs.putBool("useFahrenheit", use_fahrenheit);
     prefs.putBool("use24Hour", use_24_hour);
     prefs.putBool("useNightMode", use_night_mode);
+    prefs.putBool("soundEnabled", sound_enabled);
+    prefs.putUInt("soundEffect", sound_effect);
     prefs.putUInt("language", current_language);
 
     lv_keyboard_set_textarea(kb, nullptr);
@@ -974,7 +1315,24 @@ static void settings_event_handler(lv_event_t *e) {
 }
 
 void play_click_sound() {
-  tone(SPEAKER_PIN, 2200, 25);
+  if (!sound_enabled) return;
+
+  switch (sound_effect) {
+    case 1:
+      tone(SPEAKER_PIN, 1500, 35);
+      break;
+    case 2:
+      tone(SPEAKER_PIN, 2200, 18);
+      delay(25);
+      tone(SPEAKER_PIN, 3000, 18);
+      break;
+    case 3:
+      tone(SPEAKER_PIN, 900, 45);
+      break;
+    default:
+      tone(SPEAKER_PIN, 2200, 25);
+      break;
+  }
 }
 
 // Screen dimming functions implementation
