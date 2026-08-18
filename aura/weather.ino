@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <WiFiManager.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include <time.h>
 #include <lvgl.h>
@@ -43,6 +44,8 @@
 #define LONGITUDE_DEFAULT "114.0579"
 #define LOCATION_DEFAULT "Shenzhen"
 #define DEFAULT_CAPTIVE_SSID "Aura"
+#define QWEATHER_API_BASE "https://devapi.qweather.com"
+#define QWEATHER_API_KEY_MAX_LENGTH 64
 #define UPDATE_INTERVAL 600000UL  // 10 minutes
 
 // Night mode starts at 10pm and ends at 6am
@@ -112,6 +115,9 @@ static bool use_24_hour = false;
 static bool use_night_mode = false;
 static bool sound_enabled = true;
 static uint8_t sound_effect = 0;
+static char qweather_key[QWEATHER_API_KEY_MAX_LENGTH] = "";
+static WiFiManagerParameter qweather_key_param(
+    "qweatherKey", "QWeather API Key", "", QWEATHER_API_KEY_MAX_LENGTH);
 static char latitude[16] = LATITUDE_DEFAULT;
 static char longitude[16] = LONGITUDE_DEFAULT;
 static String location = String(LOCATION_DEFAULT);
@@ -155,6 +161,7 @@ static lv_obj_t *lbl_clock;
 static lv_obj_t *touch_calibration_btn;
 static lv_obj_t *sound_enabled_switch;
 static lv_obj_t *sound_effect_dropdown;
+static lv_obj_t *qweather_config_btn;
 
 // Touch calibration state is kept separate from the last saved transform.
 static TouchCalibration touch_calibration = {};
@@ -246,6 +253,14 @@ void activate_night_mode();
 void deactivate_night_mode();
 void check_for_night_mode();
 void handle_temp_screen_wakeup_timeout(lv_timer_t *timer);
+void apModeCallback(WiFiManager *mgr);
+static void save_qweather_params();
+static void configure_wifi_manager(WiFiManager &wm);
+static void open_qweather_config_portal();
+static void fetch_open_meteo_weather();
+static bool request_qweather(const String &path, DynamicJsonDocument &doc);
+static int qweather_icon_to_wmo(int icon);
+static bool qweather_icon_is_day(int icon);
 
 
 int day_of_week(int y, int m, int d) {
@@ -502,12 +517,15 @@ void setup() {
   sound_enabled = prefs.getBool("soundEnabled", true);
   sound_effect = constrain(prefs.getUInt("soundEffect", 0), 0, 3);
   current_language = (Language)prefs.getUInt("language", LANG_ZH);
+  String saved_qweather_key = prefs.getString("qweatherKey", "");
+  saved_qweather_key.toCharArray(qweather_key, sizeof(qweather_key));
+  qweather_key_param.setValue(qweather_key, sizeof(qweather_key));
   load_touch_calibration();
   analogWrite(LCD_BACKLIGHT_PIN, brightness);
 
   // Check for Wi-Fi config and request it if not available
   WiFiManager wm;
-  wm.setAPCallback(apModeCallback);
+  configure_wifi_manager(wm);
   wm.autoConnect(DEFAULT_CAPTIVE_SSID);
 
   lv_timer_create(update_clock, 1000, NULL);
@@ -528,6 +546,101 @@ void flush_wifi_splashscreen(uint32_t ms = 200) {
 void apModeCallback(WiFiManager *mgr) {
   wifi_splash_screen();
   flush_wifi_splashscreen();
+}
+
+static void save_qweather_params() {
+  strncpy(qweather_key, qweather_key_param.getValue(), sizeof(qweather_key) - 1);
+  qweather_key[sizeof(qweather_key) - 1] = '\0';
+  prefs.putString("qweatherKey", qweather_key);
+}
+
+static void configure_wifi_manager(WiFiManager &wm) {
+  wm.setAPCallback(apModeCallback);
+  wm.addParameter(&qweather_key_param);
+  wm.setSaveParamsCallback(save_qweather_params);
+}
+
+static void open_qweather_config_portal() {
+  if (kb) {
+    lv_keyboard_set_textarea(kb, nullptr);
+    lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
+  }
+  if (settings_win) {
+    lv_obj_del(settings_win);
+    settings_win = nullptr;
+  }
+
+  lv_obj_clean(lv_scr_act());
+  WiFiManager wm;
+  configure_wifi_manager(wm);
+  wm.setConfigPortalTimeout(300);
+  Serial.println("Starting QWeather configuration portal.");
+  wm.startConfigPortal(DEFAULT_CAPTIVE_SSID);
+
+  lv_obj_clean(lv_scr_act());
+  create_ui();
+  fetch_and_update_weather();
+}
+
+static bool request_qweather(const String &path, DynamicJsonDocument &doc) {
+  if (strlen(qweather_key) == 0) {
+    Serial.println("QWeather API key missing; configure it in the Aura AP portal.");
+    return false;
+  }
+
+  String url = String(QWEATHER_API_BASE) + path + "&key=" + urlencode(String(qweather_key));
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  if (!http.begin(client, url)) {
+    Serial.println("QWeather HTTPS connection setup failed.");
+    return false;
+  }
+
+  int status = http.GET();
+  if (status != HTTP_CODE_OK) {
+    Serial.printf("QWeather request failed: %d\n", status);
+    http.end();
+    return false;
+  }
+
+  String payload = http.getString();
+  http.end();
+
+  doc.clear();
+  if (deserializeJson(doc, payload) != DeserializationError::Ok) {
+    Serial.println("QWeather JSON parse failed.");
+    return false;
+  }
+
+  const char *api_code = doc["code"] | "";
+  if (strcmp(api_code, "200") != 0) {
+    Serial.printf("QWeather API returned code %s.\n", api_code);
+    return false;
+  }
+  return true;
+}
+
+static int qweather_icon_to_wmo(int icon) {
+  if (icon == 100 || icon == 150) return 0;
+  if ((icon >= 101 && icon <= 103) || (icon >= 151 && icon <= 153)) return 2;
+  if (icon == 104 || icon == 154) return 3;
+
+  // Preserve the special precipitation types before the broad ranges.
+  if (icon == 302) return 95;
+  if (icon == 303) return 96;
+  if (icon == 304) return 66;
+  if (icon >= 300 && icon <= 399) return 63;
+  if (icon >= 400 && icon <= 499) return 71;
+  if (icon >= 500 && icon <= 515) return 45;
+
+  if (icon == 900) return 0;
+  if (icon == 901) return 3;
+  return 3;
+}
+
+static bool qweather_icon_is_day(int icon) {
+  return icon < 150 || icon >= 200;
 }
 
 void loop() {
@@ -1203,6 +1316,16 @@ void create_settings_window() {
   lv_obj_align(sound_effect_dropdown, LV_ALIGN_RIGHT_MID, 0, 0);
   lv_obj_add_event_cb(sound_effect_dropdown, settings_event_handler, LV_EVENT_VALUE_CHANGED, NULL);
 
+  // QWeather configuration portal
+  lv_obj_t *qweather_row = create_row(38);
+  qweather_config_btn = lv_btn_create(qweather_row);
+  lv_obj_set_size(qweather_config_btn, 204, 34);
+  lv_obj_add_event_cb(qweather_config_btn, settings_event_handler, LV_EVENT_CLICKED, NULL);
+  lv_obj_t *lbl_qweather = lv_label_create(qweather_config_btn);
+  lv_label_set_text(lbl_qweather, strings->qweather_config);
+  lv_obj_set_style_text_font(lbl_qweather, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_center(lbl_qweather);
+
   // Touch calibration button
   lv_obj_t *calibration_row = create_row(38);
   touch_calibration_btn = lv_btn_create(calibration_row);
@@ -1256,6 +1379,11 @@ static void settings_event_handler(lv_event_t *e) {
 
   if (tgt == touch_calibration_btn && code == LV_EVENT_CLICKED) {
     start_touch_calibration();
+    return;
+  }
+
+  if (tgt == qweather_config_btn && code == LV_EVENT_CLICKED) {
+    open_qweather_config_portal();
     return;
   }
 
@@ -1410,21 +1538,7 @@ void do_geocode_query(const char *q) {
   http.end();
 }
 
-void fetch_and_update_weather() {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi no longer connected. Attempting to reconnect...");
-    WiFi.disconnect();
-    WiFiManager wm;  
-    wm.autoConnect(DEFAULT_CAPTIVE_SSID);
-    delay(1000);  
-    if (WiFi.status() != WL_CONNECTED) { 
-      Serial.println("WiFi connection still unavailable.");
-      return;   
-    }
-    Serial.println("WiFi connection reestablished.");
-  }
-
-
+static void fetch_open_meteo_weather() {
   String url = String("http://api.open-meteo.com/v1/forecast?latitude=")
                + latitude + "&longitude=" + longitude
                + "&current=temperature_2m,apparent_temperature,is_day,weather_code"
@@ -1435,29 +1549,24 @@ void fetch_and_update_weather() {
 
   HTTPClient http;
   http.begin(url);
-
   if (http.GET() == HTTP_CODE_OK) {
     Serial.println("Updated weather from open-meteo: " + url);
 
     String payload = http.getString();
     DynamicJsonDocument doc(32 * 1024);
-
     if (deserializeJson(doc, payload) == DeserializationError::Ok) {
       float t_now = doc["current"]["temperature_2m"].as<float>();
       float t_ap = doc["current"]["apparent_temperature"].as<float>();
       int code_now = doc["current"]["weather_code"].as<int>();
       int is_day = doc["current"]["is_day"].as<int>();
-
       if (use_fahrenheit) {
         t_now = t_now * 9.0 / 5.0 + 32.0;
         t_ap = t_ap * 9.0 / 5.0 + 32.0;
       }
-      const LocalizedStrings* strings = get_strings(current_language);
 
+      const LocalizedStrings* strings = get_strings(current_language);
       int utc_offset_seconds = doc["utc_offset_seconds"].as<int>();
       configTime(utc_offset_seconds, 0, "pool.ntp.org", "time.nist.gov");
-      Serial.print("Updating time from NTP with UTC offset: ");
-      Serial.println(utc_offset_seconds);
 
       char unit = use_fahrenheit ? 'F' : 'C';
       lv_label_set_text_fmt(lbl_today_temp, "%.0f°%c", t_now, unit);
@@ -1468,14 +1577,15 @@ void fetch_and_update_weather() {
       JsonArray tmin = doc["daily"]["temperature_2m_min"].as<JsonArray>();
       JsonArray tmax = doc["daily"]["temperature_2m_max"].as<JsonArray>();
       JsonArray weather_codes = doc["daily"]["weather_code"].as<JsonArray>();
-
       for (int i = 0; i < 7; i++) {
         const char *date = times[i];
-        int year = atoi(date + 0);
+        int year = atoi(date);
         int mon = atoi(date + 5);
         int dayd = atoi(date + 8);
         int dow = day_of_week(year, mon, dayd);
-        const char *dayStr = (i == 0 && current_language != LANG_FR) ? strings->today : strings->weekdays[dow];
+        const char *day_str = (i == 0 && current_language != LANG_FR)
+                                ? strings->today
+                                : strings->weekdays[dow];
 
         float mn = tmin[i].as<float>();
         float mx = tmax[i].as<float>();
@@ -1483,8 +1593,7 @@ void fetch_and_update_weather() {
           mn = mn * 9.0 / 5.0 + 32.0;
           mx = mx * 9.0 / 5.0 + 32.0;
         }
-
-        lv_label_set_text_fmt(lbl_daily_day[i], "%s", dayStr);
+        lv_label_set_text_fmt(lbl_daily_day[i], "%s", day_str);
         lv_label_set_text_fmt(lbl_daily_high[i], "%.0f°%c", mx, unit);
         lv_label_set_text_fmt(lbl_daily_low[i], "%.0f°%c", mn, unit);
         lv_img_set_src(img_daily[i], choose_icon(weather_codes[i].as<int>(), (i == 0) ? is_day : 1));
@@ -1495,18 +1604,13 @@ void fetch_and_update_weather() {
       JsonArray precipitation_probabilities = doc["hourly"]["precipitation_probability"].as<JsonArray>();
       JsonArray hourly_weather_codes = doc["hourly"]["weather_code"].as<JsonArray>();
       JsonArray hourly_is_day = doc["hourly"]["is_day"].as<JsonArray>();
-
       for (int i = 0; i < 7; i++) {
-        const char *date = hours[i];  // "YYYY-MM-DD"
-        int hour = atoi(date + 11);
-        int minute = atoi(date + 14);
+        const char *date_time = hours[i];
+        int hour = atoi(date_time + 11);
         String hour_name = hour_of_day(hour);
-
         float precipitation_probability = precipitation_probabilities[i].as<float>();
         float temp = hourly_temps[i].as<float>();
-        if (use_fahrenheit) {
-          temp = temp * 9.0 / 5.0 + 32.0;
-        }
+        if (use_fahrenheit) temp = temp * 9.0 / 5.0 + 32.0;
 
         if (i == 0 && current_language != LANG_FR) {
           lv_label_set_text(lbl_hourly[i], strings->now);
@@ -1517,15 +1621,112 @@ void fetch_and_update_weather() {
         lv_label_set_text_fmt(lbl_hourly_temp[i], "%.0f°%c", temp, unit);
         lv_img_set_src(img_hourly[i], choose_icon(hourly_weather_codes[i].as<int>(), hourly_is_day[i].as<int>()));
       }
-
-
     } else {
-      Serial.println("JSON parse failed on result from " + url);
+      Serial.println("Open-Meteo JSON parse failed.");
     }
   } else {
-    Serial.println("HTTP GET failed at " + url);
+    Serial.println("Open-Meteo HTTP request failed.");
   }
   http.end();
+}
+
+void fetch_and_update_weather() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi no longer connected. Attempting to reconnect...");
+    WiFi.disconnect();
+    WiFiManager wm;
+    configure_wifi_manager(wm);
+    wm.autoConnect(DEFAULT_CAPTIVE_SSID);
+    delay(1000);
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("WiFi connection still unavailable.");
+      return;
+    }
+    Serial.println("WiFi connection reestablished.");
+  }
+
+  if (strlen(qweather_key) == 0) {
+    Serial.println("QWeather API key missing; using Open-Meteo fallback.");
+    fetch_open_meteo_weather();
+    return;
+  }
+
+  DynamicJsonDocument doc(32 * 1024);
+  String location_query = String(latitude) + "," + longitude;
+  const LocalizedStrings* strings = get_strings(current_language);
+  const char unit = use_fahrenheit ? 'F' : 'C';
+
+  if (!request_qweather(String("/v7/weather/now?location=") + location_query, doc)) {
+    return;
+  }
+
+  float t_now = doc["now"]["temp"].as<float>();
+  float t_ap = doc["now"]["feelsLike"].as<float>();
+  int q_icon_now = doc["now"]["icon"].as<int>();
+  int code_now = qweather_icon_to_wmo(q_icon_now);
+  int is_day = qweather_icon_is_day(q_icon_now);
+  if (use_fahrenheit) {
+    t_now = t_now * 9.0 / 5.0 + 32.0;
+    t_ap = t_ap * 9.0 / 5.0 + 32.0;
+  }
+
+  configTime(8 * 3600, 0, "pool.ntp.org", "time.nist.gov");
+  lv_label_set_text_fmt(lbl_today_temp, "%.0f°%c", t_now, unit);
+  lv_label_set_text_fmt(lbl_today_feels_like, "%s %.0f°%c", strings->feels_like_temp, t_ap, unit);
+  lv_img_set_src(img_today_icon, choose_image(code_now, is_day));
+
+  if (request_qweather(String("/v7/weather/7d?location=") + location_query, doc)) {
+    JsonArray daily = doc["daily"].as<JsonArray>();
+    for (int i = 0; i < 7 && i < static_cast<int>(daily.size()); i++) {
+      const char *date = daily[i]["fxDate"] | "";
+      if (strlen(date) < 10) continue;
+
+      int year = atoi(date);
+      int mon = atoi(date + 5);
+      int dayd = atoi(date + 8);
+      int dow = day_of_week(year, mon, dayd);
+      const char *day_str = (i == 0 && current_language != LANG_FR)
+                              ? strings->today
+                              : strings->weekdays[dow];
+      float mn = daily[i]["tempMin"].as<float>();
+      float mx = daily[i]["tempMax"].as<float>();
+      int daily_icon = qweather_icon_to_wmo(daily[i]["iconDay"].as<int>());
+      if (use_fahrenheit) {
+        mn = mn * 9.0 / 5.0 + 32.0;
+        mx = mx * 9.0 / 5.0 + 32.0;
+      }
+
+      lv_label_set_text_fmt(lbl_daily_day[i], "%s", day_str);
+      lv_label_set_text_fmt(lbl_daily_high[i], "%.0f°%c", mx, unit);
+      lv_label_set_text_fmt(lbl_daily_low[i], "%.0f°%c", mn, unit);
+      lv_img_set_src(img_daily[i], choose_icon(daily_icon, 1));
+    }
+  }
+
+  if (request_qweather(String("/v7/weather/24h?location=") + location_query, doc)) {
+    JsonArray hourly = doc["hourly"].as<JsonArray>();
+    for (int i = 0; i < 7 && i < static_cast<int>(hourly.size()); i++) {
+      const char *date_time = hourly[i]["fxTime"] | "";
+      if (strlen(date_time) < 16) continue;
+
+      int hour = atoi(date_time + 11);
+      String hour_name = hour_of_day(hour);
+      float precipitation_probability = hourly[i]["pop"].as<float>();
+      float temp = hourly[i]["temp"].as<float>();
+      int hourly_icon = hourly[i]["icon"].as<int>();
+      if (use_fahrenheit) temp = temp * 9.0 / 5.0 + 32.0;
+
+      if (i == 0 && current_language != LANG_FR) {
+        lv_label_set_text(lbl_hourly[i], strings->now);
+      } else {
+        lv_label_set_text(lbl_hourly[i], hour_name.c_str());
+      }
+      lv_label_set_text_fmt(lbl_precipitation_probability[i], "%.0f%%", precipitation_probability);
+      lv_label_set_text_fmt(lbl_hourly_temp[i], "%.0f°%c", temp, unit);
+      lv_img_set_src(img_hourly[i], choose_icon(
+          qweather_icon_to_wmo(hourly_icon), qweather_icon_is_day(hourly_icon)));
+    }
+  }
 }
 
 const lv_img_dsc_t* choose_image(int code, int is_day) {

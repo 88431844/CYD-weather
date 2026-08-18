@@ -44,6 +44,7 @@ struct LocalizedStrings {
   const char* sound_enabled;
   const char* sound_effect;
   const char* sound_effect_options;
+  const char* qweather_config;
 };
 
 #define DEFAULT_CAPTIVE_SSID "Aura"
@@ -78,7 +79,7 @@ static const LocalizedStrings strings_en = {
   "Touch Calibration", "Press each target in order.\nHold until accepted.",
   "Point %d/5", "Cancel Calibration", "Touch calibration complete.",
   "Touch calibration failed; previous settings kept.",
-  "Sound:", "Effect:", "Classic\nSoft\nDouble\nLow"
+  "Sound:", "Effect:", "Classic\nSoft\nDouble\nLow", "Configure QWeather"
 };
 
 static const LocalizedStrings strings_es = {
@@ -113,7 +114,7 @@ static const LocalizedStrings strings_es = {
   "Calibración táctil", "Pulse cada objetivo en orden.\nMantenga pulsado hasta aceptar.",
   "Punto %d/5", "Cancelar calibración", "Calibración táctil completa.",
   "Calibración fallida; se conservaron los ajustes anteriores.",
-  "Sonido:", "Efecto:", "Classic\nSoft\nDouble\nLow"
+  "Sonido:", "Efecto:", "Classic\nSoft\nDouble\nLow", "Configurar QWeather"
 };
 
 static const LocalizedStrings strings_de = {
@@ -150,7 +151,7 @@ static const LocalizedStrings strings_de = {
   "Touchscreen kalibrieren", "Drücken Sie die Ziele der Reihe nach.\nHalten Sie bis zur Bestätigung.",
   "Punkt %d/5", "Kalibrierung abbrechen", "Touchscreen kalibriert.",
   "Kalibrierung fehlgeschlagen; alte Einstellungen behalten.",
-  "Ton:", "Effekt:", "Classic\nSoft\nDouble\nLow"
+  "Ton:", "Effekt:", "Classic\nSoft\nDouble\nLow", "QWeather konfigurieren"
 };
 
 static const LocalizedStrings strings_fr = {
@@ -187,7 +188,7 @@ static const LocalizedStrings strings_fr = {
   "Calibration tactile", "Touchez chaque cible dans l'ordre.\nMaintenez jusqu'à validation.",
   "Point %d/5", "Annuler la calibration", "Calibration tactile terminée.",
   "Échec de la calibration; anciens réglages conservés.",
-  "Son:", "Effet:", "Classic\nSoft\nDouble\nLow"
+  "Son:", "Effet:", "Classic\nSoft\nDouble\nLow", "Configurer QWeather"
 };
 
 static const LocalizedStrings strings_tr = {
@@ -221,7 +222,7 @@ static const LocalizedStrings strings_tr = {
   "Dokunmatik kalibrasyonu", "Hedeflere sırayla basın.\nKabul edilene kadar basılı tutun.",
   "Nokta %d/5", "Kalibrasyonu iptal et", "Dokunmatik kalibrasyonu tamamlandı.",
   "Kalibrasyon başarısız; önceki ayarlar korundu.",
-  "Ses:", "Efekt:", "Classic\nSoft\nDouble\nLow"
+  "Ses:", "Efekt:", "Classic\nSoft\nDouble\nLow", "QWeather yapılandır"
 };
 
 static const LocalizedStrings strings_sv = {
@@ -259,7 +260,7 @@ static const LocalizedStrings strings_sv = {
   "Pekskärmskalibrering", "Tryck på varje mål i ordning.\nHåll tills det godkänns.",
   "Punkt %d/5", "Avbryt kalibrering", "Pekskärmen är kalibrerad.",
   "Kalibrering misslyckades; tidigare inställningar behölls.",
-  "Ljud:", "Effekt:", "Classic\nSoft\nDouble\nLow"
+  "Ljud:", "Effekt:", "Classic\nSoft\nDouble\nLow", "Konfigurera QWeather"
 };
 
 static const LocalizedStrings strings_it = {
@@ -292,7 +293,7 @@ static const LocalizedStrings strings_it = {
   "Calibrazione touch", "Premi ogni obiettivo in ordine.\nTieni premuto fino all'accettazione.",
   "Punto %d/5", "Annulla calibrazione", "Calibrazione touch completata.",
   "Calibrazione fallita; impostazioni precedenti mantenute.",
-  "Suono:", "Effetto:", "Classic\nSoft\nDouble\nLow"
+  "Suono:", "Effetto:", "Classic\nSoft\nDouble\nLow", "Configura QWeather"
 };
 
 static const LocalizedStrings strings_zh = {
@@ -321,7 +322,7 @@ static const LocalizedStrings strings_zh = {
   "点调", "请点五点。",
   "点 %d/5", "取消", "点调",
   "重调，设置",
-  "Sound:", "效果:", "Classic\nSoft\nDouble\nLow"
+  "Sound:", "效果:", "Classic\nSoft\nDouble\nLow", "配置 QWeather"
 };
 
 static const LocalizedStrings* get_strings(Language current_language) {
