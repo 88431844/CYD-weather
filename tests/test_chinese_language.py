@@ -27,7 +27,10 @@ class ChineseLanguageSupportTests(unittest.TestCase):
         self.assertIn("lv_font_noto_sans_sc", WEATHER)
         self.assertRegex(WEATHER, r"current_language\s*==\s*LANG_ZH")
         chinese_chars = sorted({
-            char for char in TRANSLATIONS if "\u4e00" <= char <= "\u9fff"
+            char
+            for text in (TRANSLATIONS, WEATHER)
+            for char in text
+            if "\u4e00" <= char <= "\u9fff"
         })
         for size in (12, 14, 16, 20):
             font_path = ROOT / "aura" / f"lv_font_noto_sans_sc_{size}.c"

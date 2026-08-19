@@ -60,6 +60,9 @@ class TouchCalibrationContractTests(unittest.TestCase):
             "calibration_failed",
         ):
             self.assertIn(symbol, TRANSLATIONS)
+        self.assertIn('"屏幕校验"', TRANSLATIONS)
+        self.assertIn('"请长按每个校验点，直到确认通过。"', TRANSLATIONS)
+        self.assertNotIn('"点调", "请点五点。"', TRANSLATIONS)
 
     def test_calibration_targets_do_not_overlap_instructions_or_cancel(self):
         self.assertIn("lv_obj_set_width(instructions, 170)", WEATHER)
