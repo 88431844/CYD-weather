@@ -47,6 +47,37 @@ class SettingsLayoutAndSoundTests(unittest.TestCase):
         self.assertIn("LV_EVENT_PRESSED", settings)
         self.assertNotIn("lv_obj_t *close_row = create_row", settings)
 
+    def test_home_screen_keeps_original_layout_without_network_status_rows(self):
+        for symbol in (
+            "WeatherSource",
+            "lbl_network_status",
+            "lbl_update_status",
+            "update_home_status",
+            "weather_updated_at",
+            "WiFi.localIP().toString()",
+        ):
+            self.assertNotIn(symbol, WEATHER)
+        for symbol in (
+            "device_ip",
+            "weather_source",
+            "weather_updated",
+            "qweather_name",
+            "open_meteo_name",
+        ):
+            self.assertNotIn(symbol, TRANSLATIONS)
+        self.assertIn(
+            "lv_obj_align(lbl_forecast, LV_ALIGN_TOP_LEFT, 20, 110)",
+            WEATHER,
+        )
+        self.assertIn(
+            "lv_obj_align(box_daily, LV_ALIGN_TOP_LEFT, 10, 135)",
+            WEATHER,
+        )
+        self.assertIn(
+            "lv_obj_align(box_hourly, LV_ALIGN_TOP_LEFT, 10, 135)",
+            WEATHER,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

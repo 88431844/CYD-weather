@@ -45,6 +45,7 @@ struct LocalizedStrings {
   const char* sound_effect;
   const char* sound_effect_options;
   const char* qweather_config;
+  const char* qweather_config_status;
 };
 
 #define DEFAULT_CAPTIVE_SSID "Aura"
@@ -79,7 +80,8 @@ static const LocalizedStrings strings_en = {
   "Touch Calibration", "Press each target in order.\nHold until accepted.",
   "Point %d/5", "Cancel Calibration", "Touch calibration complete.",
   "Touch calibration failed; previous settings kept.",
-  "Sound:", "Effect:", "Classic\nSoft\nDouble\nLow", "Configure QWeather"
+  "Sound:", "Effect:", "Classic\nSoft\nDouble\nLow", "Configure QWeather",
+  "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1."
 };
 
 static const LocalizedStrings strings_es = {
@@ -114,7 +116,8 @@ static const LocalizedStrings strings_es = {
   "Calibración táctil", "Pulse cada objetivo en orden.\nMantenga pulsado hasta aceptar.",
   "Punto %d/5", "Cancelar calibración", "Calibración táctil completa.",
   "Calibración fallida; se conservaron los ajustes anteriores.",
-  "Sonido:", "Efecto:", "Classic\nSoft\nDouble\nLow", "Configurar QWeather"
+  "Sonido:", "Efecto:", "Classic\nSoft\nDouble\nLow", "Configurar QWeather",
+  "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1."
 };
 
 static const LocalizedStrings strings_de = {
@@ -151,7 +154,8 @@ static const LocalizedStrings strings_de = {
   "Touchscreen kalibrieren", "Drücken Sie die Ziele der Reihe nach.\nHalten Sie bis zur Bestätigung.",
   "Punkt %d/5", "Kalibrierung abbrechen", "Touchscreen kalibriert.",
   "Kalibrierung fehlgeschlagen; alte Einstellungen behalten.",
-  "Ton:", "Effekt:", "Classic\nSoft\nDouble\nLow", "QWeather konfigurieren"
+  "Ton:", "Effekt:", "Classic\nSoft\nDouble\nLow", "QWeather konfigurieren",
+  "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1."
 };
 
 static const LocalizedStrings strings_fr = {
@@ -188,7 +192,8 @@ static const LocalizedStrings strings_fr = {
   "Calibration tactile", "Touchez chaque cible dans l'ordre.\nMaintenez jusqu'à validation.",
   "Point %d/5", "Annuler la calibration", "Calibration tactile terminée.",
   "Échec de la calibration; anciens réglages conservés.",
-  "Son:", "Effet:", "Classic\nSoft\nDouble\nLow", "Configurer QWeather"
+  "Son:", "Effet:", "Classic\nSoft\nDouble\nLow", "Configurer QWeather",
+  "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1."
 };
 
 static const LocalizedStrings strings_tr = {
@@ -222,7 +227,8 @@ static const LocalizedStrings strings_tr = {
   "Dokunmatik kalibrasyonu", "Hedeflere sırayla basın.\nKabul edilene kadar basılı tutun.",
   "Nokta %d/5", "Kalibrasyonu iptal et", "Dokunmatik kalibrasyonu tamamlandı.",
   "Kalibrasyon başarısız; önceki ayarlar korundu.",
-  "Ses:", "Efekt:", "Classic\nSoft\nDouble\nLow", "QWeather yapılandır"
+  "Ses:", "Efekt:", "Classic\nSoft\nDouble\nLow", "QWeather yapılandır",
+  "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1."
 };
 
 static const LocalizedStrings strings_sv = {
@@ -260,7 +266,8 @@ static const LocalizedStrings strings_sv = {
   "Pekskärmskalibrering", "Tryck på varje mål i ordning.\nHåll tills det godkänns.",
   "Punkt %d/5", "Avbryt kalibrering", "Pekskärmen är kalibrerad.",
   "Kalibrering misslyckades; tidigare inställningar behölls.",
-  "Ljud:", "Effekt:", "Classic\nSoft\nDouble\nLow", "Konfigurera QWeather"
+  "Ljud:", "Effekt:", "Classic\nSoft\nDouble\nLow", "Konfigurera QWeather",
+  "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1."
 };
 
 static const LocalizedStrings strings_it = {
@@ -293,7 +300,8 @@ static const LocalizedStrings strings_it = {
   "Calibrazione touch", "Premi ogni obiettivo in ordine.\nTieni premuto fino all'accettazione.",
   "Punto %d/5", "Annulla calibrazione", "Calibrazione touch completata.",
   "Calibrazione fallita; impostazioni precedenti mantenute.",
-  "Suono:", "Effetto:", "Classic\nSoft\nDouble\nLow", "Configura QWeather"
+  "Suono:", "Effetto:", "Classic\nSoft\nDouble\nLow", "Configura QWeather",
+  "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1."
 };
 
 static const LocalizedStrings strings_zh = {
@@ -322,7 +330,8 @@ static const LocalizedStrings strings_zh = {
   "屏幕校验", "请长按每个校验点，直到确认通过。",
   "校验点 %d/5", "取消", "屏幕校验",
   "重调，设置",
-  "Sound:", "效果:", "Classic\nSoft\nDouble\nLow", "配置 QWeather"
+  "Sound:", "效果:", "Classic\nSoft\nDouble\nLow", "和风天气API Key配置",
+  "正在配置天气 API Key。\n请连接 Aura 热点，访问 192.168.4.1 完成配置。"
 };
 
 static const LocalizedStrings* get_strings(Language current_language) {
