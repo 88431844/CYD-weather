@@ -1223,8 +1223,11 @@ python3 -m unittest discover -s tests -v
 
 ```bash
 git diff --check
+sketch_dir="$(mktemp -d /tmp/aura-sketch.XXXXXX)"
 build_dir="$(mktemp -d /tmp/aura-build.XXXXXX)"
 library_dir="$(mktemp -d /tmp/aura-libs.XXXXXX)"
+cp -R aura "$sketch_dir/aura"
+mv "$sketch_dir/aura/weather.ino" "$sketch_dir/aura/aura.ino"
 cp -R /Users/luckmiracle/Documents/Arduino/libraries/TFT_eSPI "$library_dir/TFT_eSPI"
 cp TFT_eSPI/User_Setup.h "$library_dir/TFT_eSPI/User_Setup.h"
 arduino-cli compile \
@@ -1232,7 +1235,7 @@ arduino-cli compile \
   --libraries "$library_dir" \
   --build-path "$build_dir" \
   --build-property "compiler.cpp.extra_flags=-DLV_CONF_INCLUDE_SIMPLE -I/Users/luckmiracle/Documents/ChatGPT/CYD/lvgl/src" \
-  aura
+  "$sketch_dir/aura"
 ```
 
 预期：Arduino 编译成功，无缺少字形、LVGL chart API、重复符号或程序空间溢出错误。记录固件大小，但本任务不自动上传设备。

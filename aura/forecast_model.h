@@ -13,8 +13,10 @@ static constexpr int32_t CHART_POINT_NONE_VALUE = INT32_MAX;
 struct CurrentConditions {
   float temperature;
   float feels_like;
+  float humidity;
   int weather_code;
   bool is_day;
+  bool has_humidity;
   bool valid;
 };
 

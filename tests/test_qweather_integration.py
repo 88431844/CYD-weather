@@ -76,6 +76,34 @@ class QWeatherIntegrationTests(unittest.TestCase):
             restore.index("rebuild_ui(false);"),
         )
 
+    def test_initial_wifi_finishes_when_portal_ends_connected_or_not(self):
+        self.assertIn("static void finish_initial_wifi_connection() {", WEATHER)
+        finish = function_body(
+            "static void finish_initial_wifi_connection() {",
+            "static void process_initial_wifi()",
+        )
+        self.assertIn("wifi_connection_started = false;", finish)
+        self.assertIn("wifi_config_portal_started = false;", finish)
+        self.assertIn("restore_home_ui_after_wifi();", finish)
+
+        process = function_body(
+            "static void process_initial_wifi() {",
+            "static void open_qweather_config_portal()",
+        )
+        self.assertGreaterEqual(
+            process.count("finish_initial_wifi_connection();"), 2
+        )
+        self.assertRegex(
+            process,
+            r"if \(WiFi\.status\(\) == WL_CONNECTED\)\s*\{\s*"
+            r"finish_initial_wifi_connection\(\);\s*return;",
+        )
+        self.assertRegex(
+            process,
+            r"if \(wifi_config_portal_started\)\s*\{\s*"
+            r"finish_initial_wifi_connection\(\);\s*return;",
+        )
+
     def test_open_meteo_builds_one_complete_candidate_before_publish(self):
         parser = function_body(
             "static void fetch_open_meteo_weather() {",
@@ -116,19 +144,20 @@ class QWeatherIntegrationTests(unittest.TestCase):
             "void fetch_and_update_weather()",
         )
         completeness = parser[
-            parser.index("bool arrays_complete =") :
-            parser.index("if (!arrays_complete)")
+            parser.index("bool current_complete =") :
+            parser.index("if (!current_complete)")
         ]
         self.assertNotIn(
             "precipitation_probabilities.size() >= FORECAST_POINT_COUNT",
             completeness,
         )
 
-        precipitation_guard = (
-            "i < precipitation_probabilities.size() &&\n"
-            "              !precipitation_probabilities[i].isNull()"
+        precipitation_guard = "i < precipitation_probabilities.size()"
+        self.assertRegex(
+            parser,
+            r"i < precipitation_probabilities\.size\(\)\s*&&\s*"
+            r"!precipitation_probabilities\[i\]\.isNull\(\)",
         )
-        self.assertIn(precipitation_guard, parser)
         guard_start = parser.index(precipitation_guard)
         probability_assignment = parser.index(
             "candidate.hourly[i].precipitation_probability =",
@@ -136,6 +165,40 @@ class QWeatherIntegrationTests(unittest.TestCase):
         )
         guard_end = parser.index("candidate.hourly[i].valid = true", guard_start)
         self.assertLess(probability_assignment, guard_end)
+
+    def test_open_meteo_daily_points_are_validated_independently(self):
+        parser = function_body(
+            "static void fetch_open_meteo_weather() {",
+            "void fetch_and_update_weather()",
+        )
+        self.assertNotIn("times.size() >= FORECAST_POINT_COUNT", parser)
+        self.assertNotIn("points_complete", parser)
+        self.assertIn("i < times.size()", parser)
+        self.assertIn("i < tmin.size()", parser)
+        self.assertIn("i < tmax.size()", parser)
+        self.assertIn("i < weather_codes.size()", parser)
+        daily_guard = parser[parser.index("i < times.size()") : parser.index(
+            "candidate.hourly[i].temperature ="
+        )]
+        self.assertIn("candidate.daily[i].valid = true;", daily_guard)
+        self.assertNotIn("break;", daily_guard)
+
+    def test_open_meteo_hourly_points_are_validated_independently(self):
+        parser = function_body(
+            "static void fetch_open_meteo_weather() {",
+            "void fetch_and_update_weather()",
+        )
+        self.assertNotIn("hours.size() >= FORECAST_POINT_COUNT", parser)
+        for size_guard in (
+            "i < hours.size()",
+            "i < hourly_temps.size()",
+            "i < hourly_weather_codes.size()",
+            "i < hourly_is_day.size()",
+        ):
+            self.assertIn(size_guard, parser)
+        hourly_guard = parser[parser.index("i < hours.size()") :]
+        self.assertIn("candidate.hourly[i].valid = true;", hourly_guard)
+        self.assertNotIn("break;", hourly_guard)
 
     def test_qweather_accumulates_three_endpoints_and_publishes_once(self):
         parser = function_body(
@@ -170,8 +233,52 @@ class QWeatherIntegrationTests(unittest.TestCase):
             parser.index("update_home_status(WEATHER_SOURCE_QWEATHER"),
         )
         self.assertIn("!hourly[i][\"pop\"].isNull()", parser)
-        self.assertIn("daily.size() < FORECAST_POINT_COUNT", parser)
-        self.assertIn("hourly.size() < FORECAST_POINT_COUNT", parser)
+
+    def test_qweather_daily_middle_missing_and_short_arrays_only_skip_that_point(self):
+        parser = function_body(
+            "void fetch_and_update_weather() {",
+            "const lv_img_dsc_t* choose_image",
+        )
+        daily_loop = parser[
+            parser.index("for (int i = 0; i < FORECAST_POINT_COUNT; i++)") :
+            parser.index('/v7/weather/24h')
+        ]
+        self.assertIn("if (i >= daily.size())", daily_loop)
+        self.assertGreaterEqual(daily_loop.count("continue;"), 2)
+        self.assertNotIn("fetch_open_meteo_weather();", daily_loop)
+        self.assertNotIn("return;", daily_loop)
+        self.assertNotIn("daily.size() < FORECAST_POINT_COUNT", parser)
+
+    def test_qweather_hourly_middle_missing_and_short_arrays_only_skip_that_point(self):
+        parser = function_body(
+            "void fetch_and_update_weather() {",
+            "const lv_img_dsc_t* choose_image",
+        )
+        hourly_loop = parser[
+            parser.index("for (int i = 0; i < FORECAST_POINT_COUNT; i++)", parser.index('/v7/weather/24h')) :
+        ]
+        self.assertIn("if (i >= hourly.size())", hourly_loop)
+        self.assertGreaterEqual(hourly_loop.count("continue;"), 2)
+        self.assertNotIn("fetch_open_meteo_weather();", hourly_loop)
+        self.assertNotIn("return;", hourly_loop)
+        self.assertNotIn("hourly.size() < FORECAST_POINT_COUNT", parser)
+
+    def test_both_providers_parse_optional_current_humidity(self):
+        open_meteo = function_body(
+            "static void fetch_open_meteo_weather() {",
+            "void fetch_and_update_weather()",
+        )
+        self.assertIn("relative_humidity_2m", open_meteo)
+        self.assertIn("candidate.current.humidity =", open_meteo)
+        self.assertIn("candidate.current.has_humidity =", open_meteo)
+
+        qweather = function_body(
+            "void fetch_and_update_weather() {",
+            "const lv_img_dsc_t* choose_image",
+        )
+        self.assertIn('doc["now"]["humidity"]', qweather)
+        self.assertIn("candidate.current.humidity =", qweather)
+        self.assertIn("candidate.current.has_humidity =", qweather)
 
     def test_weather_parsers_do_not_write_forecast_widgets(self):
         parsers = WEATHER[

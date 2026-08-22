@@ -59,14 +59,15 @@ int main() {{
     def test_clear_resets_every_field_and_accepts_null(self):
         self.run_cpp(r'''
   WeatherSnapshot snapshot = {
-      {25.5f, 24.0f, 100, true, true},
+      {25.5f, 24.0f, 70.0f, 100, true, true, true},
       {{24.0f, 31.0f, 100, 8, 22, true}},
       {{25.5f, 20.0f, 100, 13, true, true, true}},
   };
   clear_weather_snapshot(&snapshot);
   if (snapshot.current.temperature != 0.0f ||
-      snapshot.current.feels_like != 0.0f || snapshot.current.weather_code != 0 ||
-      snapshot.current.is_day || snapshot.current.valid) return 1;
+      snapshot.current.feels_like != 0.0f || snapshot.current.humidity != 0.0f ||
+      snapshot.current.weather_code != 0 || snapshot.current.is_day ||
+      snapshot.current.has_humidity || snapshot.current.valid) return 1;
   for (int index = 0; index < FORECAST_POINT_COUNT; index++) {
     const DailyForecastPoint &daily = snapshot.daily[index];
     if (daily.minimum != 0.0f || daily.maximum != 0.0f ||
@@ -82,12 +83,13 @@ int main() {{
 
     def test_structs_support_public_field_order_aggregate_initialization(self):
         self.run_cpp(r'''
-  CurrentConditions current = {20.5f, 19.0f, 100, true, true};
+  CurrentConditions current = {20.5f, 19.0f, 65.0f, 100, true, true, true};
   DailyForecastPoint daily = {12.0f, 25.0f, 101, 8, 22, true};
   HourlyForecastPoint hourly = {20.5f, 30.0f, 100, 7, true, true, true};
   WeatherSnapshot snapshot = {current, {daily}, {hourly}};
   if (snapshot.current.temperature != 20.5f || snapshot.current.feels_like != 19.0f ||
-      snapshot.current.weather_code != 100 || !snapshot.current.is_day ||
+      snapshot.current.humidity != 65.0f || snapshot.current.weather_code != 100 ||
+      !snapshot.current.is_day || !snapshot.current.has_humidity ||
       !snapshot.current.valid) return 1;
   if (snapshot.daily[0].minimum != 12.0f || snapshot.daily[0].maximum != 25.0f ||
       snapshot.daily[0].weather_code != 101 || snapshot.daily[0].month != 8 ||

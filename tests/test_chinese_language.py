@@ -127,6 +127,26 @@ class ChineseLanguageSupportTests(unittest.TestCase):
             self.assertNotIn(".worktrees", font)
             self.assertNotIn(str(ROOT), font)
 
+    def test_generated_fonts_and_regenerator_preserve_lvgl_include_probe(self):
+        probe = (
+            '#ifdef __has_include\n'
+            '    #if __has_include("lvgl.h")\n'
+            '        #ifndef LV_LVGL_H_INCLUDE_SIMPLE\n'
+            '            #define LV_LVGL_H_INCLUDE_SIMPLE\n'
+            '        #endif\n'
+            '    #endif\n'
+            '#endif\n'
+        )
+        script = FONT_REGENERATOR.read_text(encoding="utf-8")
+        self.assertIn("normalize_font_output()", script)
+        self.assertIn('__has_include("lvgl.h")', script)
+        self.assertIn("LV_LVGL_H_INCLUDE_SIMPLE", script)
+        for size in (12, 14, 16, 20):
+            font = (ROOT / "aura" / f"lv_font_noto_sans_sc_{size}.c").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn(probe, font, f"font {size} lost the LVGL include probe")
+
     def run_extractor(self, *arguments):
         return subprocess.run(
             [sys.executable, str(EXTRACTOR), *map(str, arguments)],

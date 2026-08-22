@@ -22,6 +22,9 @@ printf '%s  %s\n' "${font_sha256}" "${font_path}" | shasum -a 256 -c -
 symbols="$(cd "${repo_dir}/aura" && python3 extract_unicode_chars.py --symbols-only weather.ino translations.h)"
 
 normalize_font_output() {
+  if ! grep -Fq '__has_include("lvgl.h")' "$1"; then
+    perl -0pi -e 's{#ifdef LV_LVGL_H_INCLUDE_SIMPLE}{#ifdef __has_include\n    #if __has_include("lvgl.h")\n        #ifndef LV_LVGL_H_INCLUDE_SIMPLE\n            #define LV_LVGL_H_INCLUDE_SIMPLE\n        #endif\n    #endif\n#endif\n\n#ifdef LV_LVGL_H_INCLUDE_SIMPLE}' "$1"
+  fi
   perl -0pi -e 's{^ \* Opts:.*$}{ * Opts: reproducible via aura/regenerate_chinese_fonts.sh}m; s/\n+\z/\n/' "$1"
 }
 

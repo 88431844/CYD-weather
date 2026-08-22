@@ -127,6 +127,22 @@ class LandscapeWeatherUiTests(unittest.TestCase):
         self.assertIn("LV_SYMBOL_SETTINGS", segmented)
         self.assertIn("screen_event_cb", segmented)
 
+    def test_landscape_summary_localizes_optional_humidity(self):
+        renderer = function_body(
+            "static void render_landscape_snapshot() {",
+            "static void set_object_hidden(",
+        )
+        self.assertIn("current.has_humidity", renderer)
+        self.assertIn("current.humidity", renderer)
+        self.assertIn("strings->humidity", renderer)
+        self.assertIn('"%s %.0f°%c · %s %.0f%%"', renderer)
+        missing_branch = renderer[renderer.index("if (current.has_humidity)") :]
+        self.assertRegex(
+            missing_branch,
+            r'else\s*\{\s*lv_label_set_text_fmt\(\s*'
+            r'lbl_today_feels_like, "%s %.0f°%c",',
+        )
+
     def test_each_forecast_column_has_temperature_icon_condition_and_fixed_size(self):
         for symbol in (
             "landscape_daily_dates",

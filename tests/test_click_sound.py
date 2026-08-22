@@ -54,7 +54,7 @@ class ClickSoundTests(unittest.TestCase):
             body = match.group(1)
             self.assertIn("play_click_sound();", body, callback)
 
-    def test_settings_close_defers_blocking_weather_refresh_until_sound_stops(self):
+    def test_settings_close_persists_and_returns_without_network_refresh(self):
         handler = WEATHER[
             WEATHER.index("static void settings_event_handler(lv_event_t *e) {") :
             WEATHER.index("static void configure_click_tone", WEATHER.index("static void settings_event_handler(lv_event_t *e) {"))
@@ -66,16 +66,13 @@ class ClickSoundTests(unittest.TestCase):
         self.assertIsNotNone(close_match)
         close_branch = close_match.group(0)
 
-        self.assertIn("schedule_weather_refresh_after_click();", close_branch)
+        self.assertIn('prefs.putBool("useFahrenheit"', close_branch)
+        self.assertIn("lv_obj_del(settings_win);", close_branch)
         self.assertNotIn("fetch_and_update_weather();", close_branch)
-        self.assertRegex(
-            WEATHER,
-            r"#define\s+CLICK_SOUND_REFRESH_DELAY_MS\s+60\b",
-        )
-        self.assertRegex(
-            WEATHER,
-            r"lv_timer_create\(\s*refresh_weather_after_click_sound\s*,\s*CLICK_SOUND_REFRESH_DELAY_MS",
-        )
+        self.assertNotIn("schedule_weather_refresh_after_click();", close_branch)
+        self.assertNotIn("CLICK_SOUND_REFRESH_DELAY_MS", WEATHER)
+        self.assertNotIn("refresh_weather_after_click_sound", WEATHER)
+        self.assertNotIn("schedule_weather_refresh_after_click", WEATHER)
 
 
 if __name__ == "__main__":

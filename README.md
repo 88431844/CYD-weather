@@ -1,29 +1,29 @@
 # Aura
 
-Aura is a simple weather widget that runs on ESP32-2432S028R ILI9341 devices with a 2.8" screen. These devices are sometimes called a "CYD" or Cheap Yellow Display.
+Aura 是一款简洁的天气小组件，运行在配备 2.8 英寸 ILI9341 屏幕的 ESP32-2432S028R 设备上。这类设备有时也称为“CYD”或“廉价黄色显示屏”（Cheap Yellow Display）。
 
-This is just the source code for the project. This project includes a case design and assembly instructions. The complete instructions are available
-here: https://makerworld.com/en/models/1382304-aura-smart-weather-forecast-display
+本仓库仅包含项目源代码。项目另有外壳设计和组装说明，完整说明位于：
+https://makerworld.com/en/models/1382304-aura-smart-weather-forecast-display
 
-### License
+### 许可
 
-You can use the weather.ino code here under the terms of the GPL 3.0 license.
+本仓库中的 weather.ino 代码按照 GPL 3.0 许可证使用。
 
-The icons are not included in that license. See "Thanks" below for details on the icons.
+图标不在该许可证范围内，详情请参阅下方“致谢”。
 
-The Simplified Chinese interface uses glyphs generated from [Noto Sans CJK SC](https://github.com/notofonts/noto-cjk), licensed under the SIL Open Font License 1.1.
+简体中文界面使用由 [Noto Sans CJK SC](https://github.com/notofonts/noto-cjk) 生成的字形，该字体采用 SIL Open Font License 1.1 许可证。
 
-### How to compile:
+### 编译方法
 
-1. Configure Arduino IDE 
-    1. for "esp32" board with a device type of "ESP32 Dev Module" and
-    1. set "Tools -> Partition Scheme" to "Huge App (3MB No OTA/1MB SPIFFS)"
-1. Install the libraries below in Arduino IDE
-1. Put the source code folders that are in this folder in ~/Documents/Arduino/
-    1. Note the included config files for lvgl and TFT_eSPI need to be dropped in their respective folders
-1. Install and run
+1. 配置 Arduino IDE：
+   1. 安装“esp32”开发板支持，并将设备类型设为“ESP32 Dev Module”。
+   1. 将“Tools -> Partition Scheme”设为“Huge App (3MB No OTA/1MB SPIFFS)”。
+1. 在 Arduino IDE 中安装下列依赖库。
+1. 将当前目录中的源代码文件夹放入 `~/Documents/Arduino/`。
+   1. 随附的 lvgl 和 TFT_eSPI 配置文件需要放入各自的库目录。
+1. 编译并运行。
 
-### Libraries required to compile:
+### 编译所需库
 
 - ArduinoJson 7.4.1
 - HttpClient 2.2.0
@@ -32,9 +32,9 @@ The Simplified Chinese interface uses glyphs generated from [Noto Sans CJK SC](h
 - XPT2046_Touchscreen 1.4
 - lvgl 9.2.2
 
-### Languages
+### 支持语言
 
-The interface is available in English, Spanish, German, French, Turkish, Swedish, Italian, and Simplified Chinese.
+界面支持英语、西班牙语、德语、法语、土耳其语、瑞典语、意大利语和简体中文。
 
 ### 显示方向与主题
 
@@ -44,17 +44,17 @@ The interface is available in English, Spanish, German, French, Turkish, Swedish
 主题提供深海、晴空、雨林、晚霞和高对比五种选择，并对主页、设置和弹窗全局生效。
 七天横屏图显示最高温、最低温及逐日天气图标；小时横屏图显示逐小时温度、天气图标和可用的降水概率。
 
-### Thanks & Credits
+### 致谢
 
-- Weather icons from https://github.com/mrdarrengriffin/google-weather-icons/tree/main/v2
-- Thanks to [lvgl](https://lvgl.io/), a great library for UIs on ESP32 devices that made this much easier
-- Thanks to [witnessmenow](https://github.com/witnessmenow/)'s [CYD Github repo](https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display) for dev board reference information
-- Double thanks to [witnessmenow](https://github.com/witnessmenow/) for the [ESP32 web flashing tutorial](https://github.com/witnessmenow/ESP-Web-Tools-Tutorial)
-- Thanks to [Random Nerd Tutorials](https://randomnerdtutorials.com/) for helpful ESP32 / CYD information, especially with [setting up LVGL](https://randomnerdtutorials.com/esp32-cyd-lvgl-line-chart/)
-- Thanks to these sweet libraries that made this possible:
-	- [ArduinoJson](https://arduinojson.org/)
-	- [HttpClient](https://github.com/amcewen/HttpClient)
-	- [TFT_eSPI](https://github.com/Bodmer/TFT_eSPI)
-	- [WifiManager](https://github.com/tzapu/WiFiManager)
-	- [XPT2046_Touchscreen](https://github.com/PaulStoffregen/XPT2046_Touchscreen)
-	- [lvgl](https://lvgl.io/)
+- 天气图标来自 https://github.com/mrdarrengriffin/google-weather-icons/tree/main/v2
+- 感谢 [lvgl](https://lvgl.io/)，它让在 ESP32 设备上构建界面变得容易许多。
+- 感谢 [witnessmenow](https://github.com/witnessmenow/) 的 [CYD GitHub 仓库](https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display) 提供开发板参考资料。
+- 再次感谢 [witnessmenow](https://github.com/witnessmenow/) 提供 [ESP32 网页刷写教程](https://github.com/witnessmenow/ESP-Web-Tools-Tutorial)。
+- 感谢 [Random Nerd Tutorials](https://randomnerdtutorials.com/) 提供实用的 ESP32/CYD 资料，尤其是[配置 LVGL](https://randomnerdtutorials.com/esp32-cyd-lvgl-line-chart/)的说明。
+- 感谢以下优秀的依赖库：
+  - [ArduinoJson](https://arduinojson.org/)
+  - [HttpClient](https://github.com/amcewen/HttpClient)
+  - [TFT_eSPI](https://github.com/Bodmer/TFT_eSPI)
+  - [WifiManager](https://github.com/tzapu/WiFiManager)
+  - [XPT2046_Touchscreen](https://github.com/PaulStoffregen/XPT2046_Touchscreen)
+  - [lvgl](https://lvgl.io/)

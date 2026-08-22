@@ -39,7 +39,7 @@ class SettingsLayoutAndSoundTests(unittest.TestCase):
     def test_temperature_and_clock_switches_rerender_cache_without_fetching(self):
         handler = WEATHER[
             WEATHER.index("static void settings_event_handler(lv_event_t *e) {") :
-            WEATHER.index("static void refresh_weather_after_click_sound")
+            WEATHER.index("static void configure_click_tone")
         ]
         branches = (
             (
@@ -73,7 +73,7 @@ class SettingsLayoutAndSoundTests(unittest.TestCase):
     def test_language_rebuild_uses_snapshot_instead_of_fetching_weather(self):
         handler = WEATHER[
             WEATHER.index("static void settings_event_handler(lv_event_t *e) {") :
-            WEATHER.index("static void refresh_weather_after_click_sound")
+            WEATHER.index("static void configure_click_tone")
         ]
         language_branch = handler[
             handler.index("if (tgt == language_dropdown") :
@@ -135,7 +135,7 @@ class SettingsLayoutAndSoundTests(unittest.TestCase):
     def test_theme_and_rotation_events_only_schedule_cached_ui_rebuild(self):
         handler = WEATHER[
             WEATHER.index("static void settings_event_handler(lv_event_t *e) {") :
-            WEATHER.index("static void refresh_weather_after_click_sound")
+            WEATHER.index("static void configure_click_tone")
         ]
         self.assertIn("for (uint8_t i = 0; i < THEME_COUNT; i++)", handler)
         self.assertIn("if (tgt == rotation_buttonmatrix", handler)
@@ -216,7 +216,7 @@ class SettingsLayoutAndSoundTests(unittest.TestCase):
 
         settings_close = WEATHER[
             WEATHER.index("if (tgt == btn_close_obj") :
-            WEATHER.index("static void refresh_weather_after_click_sound")
+            WEATHER.index("static void configure_click_tone")
         ]
         self.assertIn("lbl_settings_location = nullptr;", settings_close)
 

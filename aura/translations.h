@@ -9,6 +9,7 @@ enum Language { LANG_EN = 0, LANG_ES = 1, LANG_DE = 2, LANG_FR = 3, LANG_TR = 4,
 struct LocalizedStrings {
   const char* temp_placeholder;
   const char* feels_like_temp;
+  const char* humidity;
   const char* seven_day_forecast;
   const char* hourly_forecast;
   const char* daily_tab;
@@ -66,7 +67,7 @@ struct LocalizedStrings {
 #define DEFAULT_CAPTIVE_SSID "Aura"
 
 static const LocalizedStrings strings_en = {
-  "--°C", "Feels Like", "SEVEN DAY FORECAST", "HOURLY FORECAST",
+  "--°C", "Feels Like", "Humidity", "SEVEN DAY FORECAST", "HOURLY FORECAST",
   "7 days", "Hours",
   "Today", "Now", "am", "pm", "Noon", "Invalid hour",
   "Brightness:", "Location:", "Use °F:", "24hr:",
@@ -105,7 +106,7 @@ static const LocalizedStrings strings_en = {
 };
 
 static const LocalizedStrings strings_es = {
-  "--°C", "Sensación", "PRONÓSTICO 7 DÍAS", "PRONÓSTICO POR HORAS",
+  "--°C", "Sensación", "Humedad", "PRONÓSTICO 7 DÍAS", "PRONÓSTICO POR HORAS",
   "7 días", "Horas",
   "Hoy", "Ahora", "am", "pm", "Mediodía", "Hora inválida",
   "Brillo:", "Ubicación:", "Usar °F:", "24h:",
@@ -137,8 +138,8 @@ static const LocalizedStrings strings_es = {
   "Calibración táctil", "Pulse cada objetivo en orden.\nMantenga pulsado hasta aceptar.",
   "Punto %d/5", "Cancelar calibración", "Calibración táctil completa.",
   "Calibración fallida; se conservaron los ajustes anteriores.",
-  "Sonido:", "Efecto:", "Classic\nSoft\nDouble\nLow", "Configurar QWeather",
-  "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1.",
+  "Sonido:", "Efecto:", "Clásico\nSuave\nDoble\nGrave", "Configurar QWeather",
+  "La configuración de la clave API de QWeather está activa.\nConéctese al punto de acceso Aura y abra 192.168.4.1.",
   "IP:", "Source:", "Updated:", "QWeather", "Open-Meteo",
   "Pantalla", "Tema", "Orientación", "Corregir toque",
   {"Mar profundo", "Cielo claro", "Selva", "Atardecer", "Alto contraste"},
@@ -146,7 +147,7 @@ static const LocalizedStrings strings_es = {
 };
 
 static const LocalizedStrings strings_de = {
-  "--°C", "Gefühlt", "7-TAGE VORHERSAGE", "STÜNDLICHE VORHERSAGE",
+  "--°C", "Gefühlt", "Luftfeuchte", "7-TAGE VORHERSAGE", "STÜNDLICHE VORHERSAGE",
   "7 Tage", "Std.",
   "Heute", "Jetzt", "", "", "Mittag", "Ungültige Stunde",
   "Helligkeit:", "Standort:", "°F:", "24h:",
@@ -180,8 +181,8 @@ static const LocalizedStrings strings_de = {
   "Touchscreen kalibrieren", "Drücken Sie die Ziele der Reihe nach.\nHalten Sie bis zur Bestätigung.",
   "Punkt %d/5", "Kalibrierung abbrechen", "Touchscreen kalibriert.",
   "Kalibrierung fehlgeschlagen; alte Einstellungen behalten.",
-  "Ton:", "Effekt:", "Classic\nSoft\nDouble\nLow", "QWeather konfigurieren",
-  "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1.",
+  "Ton:", "Effekt:", "Klassisch\nSanft\nDoppelt\nTief", "QWeather konfigurieren",
+  "Die QWeather-API-Schlüsselkonfiguration ist aktiv.\nVerbinden Sie sich mit dem Aura-Hotspot und öffnen Sie 192.168.4.1.",
   "IP:", "Quelle:", "Aktualisiert:", "QWeather", "Open-Meteo",
   "Anzeige", "Thema", "Ausrichtung", "Touch korrigieren",
   {"Tiefsee", "Klarer Himmel", "Regenwald", "Abendrot", "Hoher Kontrast"},
@@ -189,7 +190,7 @@ static const LocalizedStrings strings_de = {
 };
 
 static const LocalizedStrings strings_fr = {
-  "--°C", "Ressenti", "PRÉVISIONS 7 JOURS", "PRÉVISIONS HORAIRES",
+  "--°C", "Ressenti", "Humidité", "PRÉVISIONS 7 JOURS", "PRÉVISIONS HORAIRES",
   "7 jours", "Heures",
   "Aujourd'hui", "Maintenant", "h", "h", "Midi", "Heure invalide",
   "Luminosité:", "Lieu:", "Utiliser °F:", "24h:",
@@ -223,8 +224,8 @@ static const LocalizedStrings strings_fr = {
   "Calibration tactile", "Touchez chaque cible dans l'ordre.\nMaintenez jusqu'à validation.",
   "Point %d/5", "Annuler la calibration", "Calibration tactile terminée.",
   "Échec de la calibration; anciens réglages conservés.",
-  "Son:", "Effet:", "Classic\nSoft\nDouble\nLow", "Configurer QWeather",
-  "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1.",
+  "Son:", "Effet:", "Classique\nDoux\nDouble\nGrave", "Configurer QWeather",
+  "La configuration de la clé API QWeather est active.\nConnectez-vous au point d'accès Aura et ouvrez 192.168.4.1.",
   "IP:", "Source :", "Mis à jour :", "QWeather", "Open-Meteo",
   "Affichage", "Thème", "Orientation", "Corriger le tactile",
   {"Haute mer", "Ciel clair", "Forêt", "Crépuscule", "Contraste élevé"},
@@ -232,7 +233,7 @@ static const LocalizedStrings strings_fr = {
 };
 
 static const LocalizedStrings strings_tr = {
-  "--°C", "Hissedilen", "YEDI GÜNLÜK TAHMIN", "SAATLIK TAHMIN",
+  "--°C", "Hissedilen", "Nem", "YEDI GÜNLÜK TAHMIN", "SAATLIK TAHMIN",
   "7 gün", "Saat",
   "Bugün", "Simdi", "öö", "ös", "Öğle", "Geçersiz saat",
   "Parlaklik:", "Konum:", "°F Kullan:", "24 Saat:",
@@ -263,8 +264,8 @@ static const LocalizedStrings strings_tr = {
   "Dokunmatik kalibrasyonu", "Hedeflere sırayla basın.\nKabul edilene kadar basılı tutun.",
   "Nokta %d/5", "Kalibrasyonu iptal et", "Dokunmatik kalibrasyonu tamamlandı.",
   "Kalibrasyon başarısız; önceki ayarlar korundu.",
-  "Ses:", "Efekt:", "Classic\nSoft\nDouble\nLow", "QWeather yapılandır",
-  "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1.",
+  "Ses:", "Efekt:", "Klasik\nYumuşak\nÇift\nDüşük", "QWeather yapılandır",
+  "QWeather API anahtarı yapılandırması etkin.\nAura erişim noktasına bağlanın ve 192.168.4.1 adresini açın.",
   "IP:", "Kaynak:", "Güncellendi:", "QWeather", "Open-Meteo",
   "Ekran", "Tema", "Yön", "Dokunmayı düzelt",
   {"Derin deniz", "Açık gökyüzü", "Yağmur ormanı", "Gün batımı", "Yüksek kontrast"},
@@ -272,7 +273,7 @@ static const LocalizedStrings strings_tr = {
 };
 
 static const LocalizedStrings strings_sv = {
-  "--°C", "Känns som", "7-DAGARS PROGNOS", "TIMPROGNOS",
+  "--°C", "Känns som", "Luftfuktighet", "7-DAGARS PROGNOS", "TIMPROGNOS",
   "7 dygn", "Tim",
   "Idag", "Nu", "", "", "Middag", "Ogiltig timme",
   "Ljusstyrka:", "Plats:", "Använd °F:", "24h:",
@@ -307,8 +308,8 @@ static const LocalizedStrings strings_sv = {
   "Pekskärmskalibrering", "Tryck på varje mål i ordning.\nHåll tills det godkänns.",
   "Punkt %d/5", "Avbryt kalibrering", "Pekskärmen är kalibrerad.",
   "Kalibrering misslyckades; tidigare inställningar behölls.",
-  "Ljud:", "Effekt:", "Classic\nSoft\nDouble\nLow", "Konfigurera QWeather",
-  "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1.",
+  "Ljud:", "Effekt:", "Klassisk\nMjuk\nDubbel\nLåg", "Konfigurera QWeather",
+  "Konfigurationen av QWeather API-nyckeln är aktiv.\nAnslut till Aura-hotspoten och öppna 192.168.4.1.",
   "IP:", "Källa:", "Uppdaterad:", "QWeather", "Open-Meteo",
   "Skärm", "Tema", "Riktning", "Korrigera touch",
   {"Djuphav", "Klar himmel", "Regnskog", "Solnedgång", "Hög kontrast"},
@@ -316,7 +317,7 @@ static const LocalizedStrings strings_sv = {
 };
 
 static const LocalizedStrings strings_it = {
-  "--°C", "Percepita", "PREVISIONI A 7 GIORNI", "PREVISIONI ORARIE",
+  "--°C", "Percepita", "Umidità", "PREVISIONI A 7 GIORNI", "PREVISIONI ORARIE",
   "7 gg", "Ore",
   "Oggi", "Ora", "am", "pm", "Mezzog.", "Ora non valida",
   "Luminosità:", "Posizione:", "Utilizzo °F:", "24hr:",
@@ -346,8 +347,8 @@ static const LocalizedStrings strings_it = {
   "Calibrazione touch", "Premi ogni obiettivo in ordine.\nTieni premuto fino all'accettazione.",
   "Punto %d/5", "Annulla calibrazione", "Calibrazione touch completata.",
   "Calibrazione fallita; impostazioni precedenti mantenute.",
-  "Suono:", "Effetto:", "Classic\nSoft\nDouble\nLow", "Configura QWeather",
-  "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1.",
+  "Suono:", "Effetto:", "Classico\nMorbido\nDoppio\nBasso", "Configura QWeather",
+  "La configurazione della chiave API QWeather è attiva.\nConnettiti all'hotspot Aura e apri 192.168.4.1.",
   "IP:", "Fonte:", "Aggiornato:", "QWeather", "Open-Meteo",
   "Schermo", "Tema", "Orientamento", "Correggi tocco",
   {"Mare profondo", "Cielo sereno", "Foresta", "Tramonto", "Alto contrasto"},
@@ -355,7 +356,7 @@ static const LocalizedStrings strings_it = {
 };
 
 static const LocalizedStrings strings_zh = {
-  "--°C", "体感温度", "七日天气预报", "小时天气预报",
+  "--°C", "体感温度", "湿度", "七日天气预报", "小时天气预报",
   "7天", "小时",
   "今天", "现在", "上午", "下午", "中午", "无效时间",
   "亮度:", "位置:", "使用 °F:", "24小时:",
@@ -381,7 +382,7 @@ static const LocalizedStrings strings_zh = {
   "屏幕校验", "请长按每个校验点，直到确认通过。",
   "校验点 %d/5", "取消", "屏幕校验",
   "重调，设置",
-  "Sound:", "效果:", "Classic\nSoft\nDouble\nLow", "和风天气API Key配置",
+  "声音:", "效果:", "经典\n柔和\n双音\n低沉", "和风天气API Key配置",
   "正在配置天气 API Key。\n请连接 Aura 热点，访问 192.168.4.1 完成配置。",
   "IP:", "天气源:", "更新时间:", "和风天气", "Open-Meteo",
   "显示设置", "主题", "屏幕方向", "自动校正触摸",

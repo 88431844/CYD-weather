@@ -32,7 +32,6 @@ static_assert(CHART_POINT_NONE_VALUE == LV_CHART_POINT_NONE,
 #define SPEAKER_PIN 26   // On-board speaker/buzzer on ESP32-2432S028R
 #define SPEAKER_LEDC_CHANNEL 0
 #define SPEAKER_DUTY 24
-#define CLICK_SOUND_REFRESH_DELAY_MS 60
 #define SCREEN_WIDTH 240
 #define SCREEN_HEIGHT 320
 #define DRAW_BUF_SIZE (SCREEN_WIDTH * SCREEN_HEIGHT / 10 * (LV_COLOR_DEPTH / 8))
@@ -353,7 +352,6 @@ void fetch_and_update_weather();
 void create_settings_window();
 void play_click_sound();
 static void stop_click_sound(lv_timer_t *timer);
-static void schedule_weather_refresh_after_click();
 static void apply_display_preferences_async(void *user_data);
 static bool schedule_display_preferences_apply(ThemeId theme,
                                                ScreenRotation rotation,
@@ -670,9 +668,16 @@ static void render_landscape_snapshot() {
     lv_label_set_text(
         landscape_current_condition,
         weather_condition_name(current.weather_code));
-    lv_label_set_text_fmt(
-        lbl_today_feels_like, "%s %.0f°%c",
-        strings->feels_like_temp, current_feels_like, unit);
+    if (current.has_humidity) {
+      lv_label_set_text_fmt(
+          lbl_today_feels_like, "%s %.0f°%c · %s %.0f%%",
+          strings->feels_like_temp, current_feels_like, unit,
+          strings->humidity, current.humidity);
+    } else {
+      lv_label_set_text_fmt(
+          lbl_today_feels_like, "%s %.0f°%c",
+          strings->feels_like_temp, current_feels_like, unit);
+    }
   } else {
     lv_label_set_text(lbl_today_temp, strings->temp_placeholder);
     lv_label_set_text(landscape_current_condition, "--");
@@ -1282,6 +1287,12 @@ static void restore_home_ui_after_wifi() {
   rebuild_ui(false);
 }
 
+static void finish_initial_wifi_connection() {
+  wifi_connection_started = false;
+  wifi_config_portal_started = false;
+  restore_home_ui_after_wifi();
+}
+
 static void process_initial_wifi() {
   if (!wifi_connection_started) return;
 
@@ -1291,8 +1302,12 @@ static void process_initial_wifi() {
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    wifi_connection_started = false;
-    restore_home_ui_after_wifi();
+    finish_initial_wifi_connection();
+    return;
+  }
+
+  if (wifi_config_portal_started) {
+    finish_initial_wifi_connection();
     return;
   }
 
@@ -2079,7 +2094,7 @@ static void create_landscape_header(lv_obj_t *scr) {
       LV_PART_MAIN | LV_STATE_DEFAULT);
 
   lbl_today_feels_like = lv_label_create(scr);
-  lv_obj_set_size(lbl_today_feels_like, 78, 14);
+  lv_obj_set_size(lbl_today_feels_like, 208, 14);
   lv_obj_set_pos(lbl_today_feels_like, 106, 40);
   lv_label_set_long_mode(lbl_today_feels_like, LV_LABEL_LONG_DOT);
   lv_label_set_text(lbl_today_feels_like, strings->feels_like_temp);
@@ -3227,19 +3242,7 @@ static void settings_event_handler(lv_event_t *e) {
     settings_win = nullptr;
     lbl_settings_location = nullptr;
 
-    schedule_weather_refresh_after_click();
   }
-}
-
-static void refresh_weather_after_click_sound(lv_timer_t *timer) {
-  (void)timer;
-  fetch_and_update_weather();
-}
-
-static void schedule_weather_refresh_after_click() {
-  lv_timer_t *timer = lv_timer_create(
-      refresh_weather_after_click_sound, CLICK_SOUND_REFRESH_DELAY_MS, nullptr);
-  lv_timer_set_repeat_count(timer, 1);
 }
 
 static void configure_click_tone(uint32_t frequency) {
@@ -3383,7 +3386,7 @@ void do_geocode_query(const char *q) {
 static void fetch_open_meteo_weather() {
   String url = String("http://api.open-meteo.com/v1/forecast?latitude=")
                + latitude + "&longitude=" + longitude
-               + "&current=temperature_2m,apparent_temperature,is_day,weather_code"
+               + "&current=temperature_2m,apparent_temperature,relative_humidity_2m,is_day,weather_code"
                + "&daily=temperature_2m_min,temperature_2m_max,weather_code"
                + "&hourly=temperature_2m,precipitation_probability,is_day,weather_code"
                + "&forecast_hours=7"
@@ -3411,72 +3414,76 @@ static void fetch_open_meteo_weather() {
       JsonArray hourly_weather_codes = doc["hourly"]["weather_code"].as<JsonArray>();
       JsonArray hourly_is_day = doc["hourly"]["is_day"].as<JsonArray>();
 
-      bool arrays_complete =
+      bool current_complete =
           !current.isNull() &&
           !current["temperature_2m"].isNull() &&
           !current["apparent_temperature"].isNull() &&
           !current["weather_code"].isNull() &&
-          !current["is_day"].isNull() &&
-          times.size() >= FORECAST_POINT_COUNT &&
-          tmin.size() >= FORECAST_POINT_COUNT &&
-          tmax.size() >= FORECAST_POINT_COUNT &&
-          weather_codes.size() >= FORECAST_POINT_COUNT &&
-          hours.size() >= FORECAST_POINT_COUNT &&
-          hourly_temps.size() >= FORECAST_POINT_COUNT &&
-          hourly_weather_codes.size() >= FORECAST_POINT_COUNT &&
-          hourly_is_day.size() >= FORECAST_POINT_COUNT;
+          !current["is_day"].isNull();
 
-      if (!arrays_complete) {
-        Serial.println("Open-Meteo weather data incomplete.");
+      if (!current_complete) {
+        Serial.println("Open-Meteo current weather incomplete.");
       } else {
         candidate.current.temperature = current["temperature_2m"].as<float>();
         candidate.current.feels_like = current["apparent_temperature"].as<float>();
+        candidate.current.has_humidity =
+            !current["relative_humidity_2m"].isNull();
+        if (candidate.current.has_humidity) {
+          candidate.current.humidity =
+              current["relative_humidity_2m"].as<float>();
+        }
         candidate.current.weather_code = current["weather_code"].as<int>();
         candidate.current.is_day = current["is_day"].as<int>() != 0;
         candidate.current.valid = true;
 
-        bool points_complete = true;
         for (int i = 0; i < FORECAST_POINT_COUNT; i++) {
-          const char *date = times[i] | "";
-          const char *date_time = hours[i] | "";
-          if (strlen(date) < 10 || strlen(date_time) < 13 ||
-              tmin[i].isNull() || tmax[i].isNull() ||
-              weather_codes[i].isNull() || hourly_temps[i].isNull() ||
-              hourly_weather_codes[i].isNull() || hourly_is_day[i].isNull()) {
-            points_complete = false;
-            break;
+          if (i < times.size() && i < tmin.size() && i < tmax.size() &&
+              i < weather_codes.size()) {
+            const char *date = times[i] | "";
+            if (strlen(date) >= 10 && !tmin[i].isNull() &&
+                !tmax[i].isNull() && !weather_codes[i].isNull()) {
+              candidate.daily[i].minimum = tmin[i].as<float>();
+              candidate.daily[i].maximum = tmax[i].as<float>();
+              candidate.daily[i].weather_code = weather_codes[i].as<int>();
+              candidate.daily[i].month = static_cast<uint8_t>(atoi(date + 5));
+              candidate.daily[i].day = static_cast<uint8_t>(atoi(date + 8));
+              candidate.daily[i].valid = true;
+            } else {
+              Serial.printf("Open-Meteo daily point %d incomplete.\n", i);
+            }
           }
 
-          candidate.daily[i].minimum = tmin[i].as<float>();
-          candidate.daily[i].maximum = tmax[i].as<float>();
-          candidate.daily[i].weather_code = weather_codes[i].as<int>();
-          candidate.daily[i].month = static_cast<uint8_t>(atoi(date + 5));
-          candidate.daily[i].day = static_cast<uint8_t>(atoi(date + 8));
-          candidate.daily[i].valid = true;
-
-          candidate.hourly[i].temperature = hourly_temps[i].as<float>();
-          candidate.hourly[i].weather_code = hourly_weather_codes[i].as<int>();
-          candidate.hourly[i].hour = static_cast<uint8_t>(atoi(date_time + 11));
-          candidate.hourly[i].is_day = hourly_is_day[i].as<int>() != 0;
-          candidate.hourly[i].has_precipitation =
-              i < precipitation_probabilities.size() &&
-              !precipitation_probabilities[i].isNull();
-          if (candidate.hourly[i].has_precipitation) {
-            candidate.hourly[i].precipitation_probability =
-                precipitation_probabilities[i].as<float>();
+          if (i < hours.size() && i < hourly_temps.size() &&
+              i < hourly_weather_codes.size() && i < hourly_is_day.size()) {
+            const char *date_time = hours[i] | "";
+            if (strlen(date_time) >= 13 && !hourly_temps[i].isNull() &&
+                !hourly_weather_codes[i].isNull() &&
+                !hourly_is_day[i].isNull()) {
+              candidate.hourly[i].temperature = hourly_temps[i].as<float>();
+              candidate.hourly[i].weather_code =
+                  hourly_weather_codes[i].as<int>();
+              candidate.hourly[i].hour =
+                  static_cast<uint8_t>(atoi(date_time + 11));
+              candidate.hourly[i].is_day = hourly_is_day[i].as<int>() != 0;
+              candidate.hourly[i].has_precipitation =
+                  i < precipitation_probabilities.size() &&
+                  !precipitation_probabilities[i].isNull();
+              if (candidate.hourly[i].has_precipitation) {
+                candidate.hourly[i].precipitation_probability =
+                    precipitation_probabilities[i].as<float>();
+              }
+              candidate.hourly[i].valid = true;
+            } else {
+              Serial.printf("Open-Meteo hourly point %d incomplete.\n", i);
+            }
           }
-          candidate.hourly[i].valid = true;
         }
 
-        if (points_complete) {
-          int utc_offset_seconds = doc["utc_offset_seconds"].as<int>();
-          configTime(utc_offset_seconds, 0, "pool.ntp.org", "time.nist.gov");
-          String updated_at = doc["current"]["time"] | "";
-          publish_weather_snapshot(candidate);
-          update_home_status(WEATHER_SOURCE_OPEN_METEO, updated_at.c_str());
-        } else {
-          Serial.println("Open-Meteo forecast points incomplete.");
-        }
+        int utc_offset_seconds = doc["utc_offset_seconds"].as<int>();
+        configTime(utc_offset_seconds, 0, "pool.ntp.org", "time.nist.gov");
+        String updated_at = doc["current"]["time"] | "";
+        publish_weather_snapshot(candidate);
+        update_home_status(WEATHER_SOURCE_OPEN_METEO, updated_at.c_str());
       }
     } else {
       Serial.println("Open-Meteo JSON parse failed.");
@@ -3521,6 +3528,10 @@ void fetch_and_update_weather() {
   int q_icon_now = doc["now"]["icon"].as<int>();
   candidate.current.temperature = doc["now"]["temp"].as<float>();
   candidate.current.feels_like = doc["now"]["feelsLike"].as<float>();
+  candidate.current.has_humidity = !doc["now"]["humidity"].isNull();
+  if (candidate.current.has_humidity) {
+    candidate.current.humidity = doc["now"]["humidity"].as<float>();
+  }
   candidate.current.weather_code = qweather_icon_to_wmo(q_icon_now);
   candidate.current.is_day = qweather_icon_is_day(q_icon_now);
   candidate.current.valid = true;
@@ -3532,18 +3543,16 @@ void fetch_and_update_weather() {
   }
 
   JsonArray daily = doc["daily"].as<JsonArray>();
-  if (daily.size() < FORECAST_POINT_COUNT) {
-    Serial.println("QWeather daily forecast incomplete; using Open-Meteo fallback.");
-    fetch_open_meteo_weather();
-    return;
-  }
   for (int i = 0; i < FORECAST_POINT_COUNT; i++) {
+    if (i >= daily.size()) {
+      Serial.printf("QWeather daily point %d missing.\n", i);
+      continue;
+    }
     const char *date = daily[i]["fxDate"] | "";
     if (strlen(date) < 10 || daily[i]["tempMin"].isNull() ||
         daily[i]["tempMax"].isNull() || daily[i]["iconDay"].isNull()) {
-      Serial.println("QWeather daily point incomplete; using Open-Meteo fallback.");
-      fetch_open_meteo_weather();
-      return;
+      Serial.printf("QWeather daily point %d incomplete.\n", i);
+      continue;
     }
 
     candidate.daily[i].minimum = daily[i]["tempMin"].as<float>();
@@ -3562,18 +3571,16 @@ void fetch_and_update_weather() {
   }
 
   JsonArray hourly = doc["hourly"].as<JsonArray>();
-  if (hourly.size() < FORECAST_POINT_COUNT) {
-    Serial.println("QWeather hourly forecast incomplete; using Open-Meteo fallback.");
-    fetch_open_meteo_weather();
-    return;
-  }
   for (int i = 0; i < FORECAST_POINT_COUNT; i++) {
+    if (i >= hourly.size()) {
+      Serial.printf("QWeather hourly point %d missing.\n", i);
+      continue;
+    }
     const char *date_time = hourly[i]["fxTime"] | "";
     if (strlen(date_time) < 13 || hourly[i]["temp"].isNull() ||
         hourly[i]["icon"].isNull()) {
-      Serial.println("QWeather hourly point incomplete; using Open-Meteo fallback.");
-      fetch_open_meteo_weather();
-      return;
+      Serial.printf("QWeather hourly point %d incomplete.\n", i);
+      continue;
     }
 
     int hourly_icon = hourly[i]["icon"].as<int>();

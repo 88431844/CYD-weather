@@ -44,6 +44,7 @@ int main() {{
     def test_header_uses_theme_count_for_new_arrays(self):
         self.assertIn('#include "display_config.h"', TRANSLATIONS)
         for field in (
+            "humidity",
             "display_settings",
             "theme",
             "screen_orientation",
@@ -54,6 +55,38 @@ int main() {{
             "hourly_tab",
         ):
             self.assertIn(field, TRANSLATIONS)
+
+    def test_humidity_qweather_status_and_sound_effects_are_really_localized(self):
+        self.run_cpp(r'''
+  const LocalizedStrings *languages[] = {
+      &strings_en, &strings_es, &strings_de, &strings_fr,
+      &strings_tr, &strings_sv, &strings_it, &strings_zh};
+  const char *humidity[] = {
+      "Humidity", "Humedad", "Luftfeuchte", "Humidité",
+      "Nem", "Luftfuktighet", "Umidità", "湿度"};
+  const char *effects[] = {
+      "Classic\nSoft\nDouble\nLow",
+      "Clásico\nSuave\nDoble\nGrave",
+      "Klassisch\nSanft\nDoppelt\nTief",
+      "Classique\nDoux\nDouble\nGrave",
+      "Klasik\nYumuşak\nÇift\nDüşük",
+      "Klassisk\nMjuk\nDubbel\nLåg",
+      "Classico\nMorbido\nDoppio\nBasso",
+      "经典\n柔和\n双音\n低沉"};
+  for (int index = 0; index < 8; index++) {
+    if (std::strcmp(languages[index]->humidity, humidity[index])) return 10 + index;
+    if (std::strcmp(languages[index]->sound_effect_options, effects[index])) return 20 + index;
+  }
+  if (std::strcmp(strings_zh.sound_enabled, "声音:")) return 30;
+  const LocalizedStrings *translated[] = {
+      &strings_es, &strings_de, &strings_fr, &strings_tr, &strings_sv, &strings_it};
+  for (const LocalizedStrings *strings : translated) {
+    if (std::strstr(strings->qweather_config_status, "configuration is active") ||
+        std::strstr(strings->qweather_config_status, "Connect to")) return 31;
+    if (!std::strstr(strings->qweather_config_status, "192.168.4.1")) return 32;
+  }
+  return 0;
+''')
 
     def test_all_languages_have_distinct_short_landscape_tabs(self):
         self.run_cpp(r'''
