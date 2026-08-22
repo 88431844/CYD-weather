@@ -109,13 +109,15 @@ int main() {{
   return 0;
 ''')
 
-    def test_create_ui_only_dispatches_to_extracted_portrait_builder(self):
+    def test_create_ui_only_dispatches_to_orientation_builders(self):
         create_start = WEATHER.index("void create_ui() {")
         create_end = WEATHER.index("void populate_results_dropdown()", create_start)
         create = WEATHER[create_start:create_end]
         self.assertIn("static void create_portrait_ui(lv_obj_t *scr) {", WEATHER)
+        self.assertIn("static void create_landscape_ui(lv_obj_t *scr) {", WEATHER)
         self.assertEqual(create.count("create_portrait_ui(scr);"), 1)
-        self.assertNotIn("create_landscape_ui", create)
+        self.assertEqual(create.count("create_landscape_ui(scr);"), 1)
+        self.assertIn("geometry_for_rotation(current_rotation).landscape", create)
         for object_name in (
             "img_today_icon",
             "lbl_today_temp",

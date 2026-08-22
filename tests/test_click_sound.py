@@ -37,6 +37,8 @@ class ClickSoundTests(unittest.TestCase):
             "screen_event_cb",
             "daily_cb",
             "hourly_cb",
+            "select_daily_cb",
+            "select_hourly_cb",
             "change_location_event_cb",
             "location_save_event_cb",
             "location_cancel_event_cb",
