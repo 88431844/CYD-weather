@@ -542,7 +542,8 @@ void touchscreen_read(lv_indev_t *indev, lv_indev_data_t *data) {
 
     portrait_x = constrain(portrait_x, 0, PORTRAIT_WIDTH - 1);
     portrait_y = constrain(portrait_y, 0, PORTRAIT_HEIGHT - 1);
-    rotate_portrait_touch(current_rotation, portrait_x, portrait_y, &x, &y);
+    x = portrait_x;
+    y = portrait_y;
 
     // Handle touch during dimmed screen
     if (!calibration_active && night_mode_active) {
@@ -576,7 +577,8 @@ void touchscreen_read(lv_indev_t *indev, lv_indev_data_t *data) {
 }
 
 static void rebuild_ui(bool reopen_settings) {
-  if (kb) lv_keyboard_set_textarea(kb, nullptr);
+  if (calibration_active || qweather_portal_active) return;
+  if (kb && lv_obj_is_valid(kb)) lv_keyboard_set_textarea(kb, nullptr);
   kb = nullptr;
   settings_win = nullptr;
   location_win = nullptr;
@@ -626,7 +628,6 @@ void setup() {
   saved_qweather_key.toCharArray(qweather_key, sizeof(qweather_key));
   qweather_key_param.setValue(qweather_key, sizeof(qweather_key));
   load_touch_calibration();
-  analogWrite(LCD_BACKLIGHT_PIN, brightness);
 
   // Init touchscreen
   touchscreenSPI.begin(XPT2046_CLK, XPT2046_MISO, XPT2046_MOSI, XPT2046_CS);
@@ -637,8 +638,10 @@ void setup() {
   lv_display_set_rotation(display, lv_rotation_for(current_rotation));
   touch_indev = lv_indev_create();
   lv_indev_set_type(touch_indev, LV_INDEV_TYPE_POINTER);
+  // LVGL 9 applies display rotation to bound pointer input.
   lv_indev_set_display(touch_indev, display);
   lv_indev_set_read_cb(touch_indev, touchscreen_read);
+  analogWrite(LCD_BACKLIGHT_PIN, brightness);
 
   // Start saved Wi-Fi credentials without blocking the display or touch loop.
   configure_wifi_manager(wifi_manager);
@@ -1241,9 +1244,13 @@ static void update_calibration_target() {
 
   calibration_target = lv_obj_create(calibration_overlay);
   lv_obj_set_size(calibration_target, 24, 24);
+  const TouchScreenPoint portrait_target = TOUCH_CALIBRATION_TARGETS[calibration_target_index];
+  int target_x = 0;
+  int target_y = 0;
+  rotate_portrait_touch(current_rotation, portrait_target.x, portrait_target.y, &target_x, &target_y);
   lv_obj_set_pos(calibration_target,
-                 static_cast<int>(TOUCH_CALIBRATION_TARGETS[calibration_target_index].x) - 12,
-                 static_cast<int>(TOUCH_CALIBRATION_TARGETS[calibration_target_index].y) - 12);
+                 target_x - 12,
+                 target_y - 12);
   lv_obj_set_style_pad_all(calibration_target, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_bg_color(calibration_target, lv_palette_main(LV_PALETTE_RED),
                             LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1348,7 +1355,7 @@ static void start_touch_calibration() {
   calibration_state = TOUCH_CALIBRATION_WAIT_PRESS;
 
   calibration_overlay = lv_obj_create(lv_scr_act());
-  lv_obj_set_size(calibration_overlay, SCREEN_WIDTH, SCREEN_HEIGHT);
+  lv_obj_set_size(calibration_overlay, display_width(), display_height());
   lv_obj_set_pos(calibration_overlay, 0, 0);
   lv_obj_set_style_bg_color(calibration_overlay, lv_color_hex(0x183246),
                             LV_PART_MAIN | LV_STATE_DEFAULT);
