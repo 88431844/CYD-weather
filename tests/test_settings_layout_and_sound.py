@@ -12,6 +12,41 @@ TRANSLATIONS = (ROOT / "aura" / "translations.h").read_text(encoding="utf-8")
 
 
 class SettingsLayoutAndSoundTests(unittest.TestCase):
+    def test_rebuild_renders_cached_snapshot_once_without_fetching(self):
+        rebuild = WEATHER[
+            WEATHER.index("static void rebuild_ui(bool reopen_settings) {") :
+            WEATHER.index("void setup()")
+        ]
+        self.assertEqual(rebuild.count("create_ui();"), 1)
+        self.assertEqual(rebuild.count("render_weather_snapshot();"), 1)
+        self.assertLess(rebuild.index("create_ui();"), rebuild.index("render_weather_snapshot();"))
+        self.assertLess(
+            rebuild.index("render_weather_snapshot();"),
+            rebuild.index("if (reopen_settings) create_settings_window();"),
+        )
+        self.assertNotIn("fetch_and_update_weather", rebuild)
+
+    def test_forecast_tabs_save_active_view_and_do_not_fetch(self):
+        daily = WEATHER[WEATHER.index("void daily_cb(lv_event_t *e) {") : WEATHER.index("void hourly_cb")]
+        hourly = WEATHER[WEATHER.index("void hourly_cb(lv_event_t *e) {") : WEATHER.index("static void reset_wifi_event_handler")]
+        self.assertIn("active_forecast_view = FORECAST_HOURLY;", daily)
+        self.assertIn("active_forecast_view = FORECAST_DAILY;", hourly)
+        for callback in (daily, hourly):
+            self.assertIn("play_click_sound();", callback)
+            self.assertNotIn("fetch_and_update_weather", callback)
+
+    def test_language_rebuild_uses_snapshot_instead_of_fetching_weather(self):
+        handler = WEATHER[
+            WEATHER.index("static void settings_event_handler(lv_event_t *e) {") :
+            WEATHER.index("static void refresh_weather_after_click_sound")
+        ]
+        language_branch = handler[
+            handler.index("if (tgt == language_dropdown") :
+            handler.index("if (tgt == btn_close_obj")
+        ]
+        self.assertIn("rebuild_ui(true);", language_branch)
+        self.assertNotIn("fetch_and_update_weather", language_branch)
+
     def test_shenzhen_is_the_default_location(self):
         self.assertIn('#define LATITUDE_DEFAULT "22.5431"', WEATHER)
         self.assertIn('#define LONGITUDE_DEFAULT "114.0579"', WEATHER)

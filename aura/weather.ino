@@ -16,6 +16,7 @@
 #include <miniz.h>
 #include "esp_system.h"
 #include "display_config.h"
+#include "forecast_model.h"
 #include "translations.h"
 #include "touch_calibration.h"
 
@@ -148,8 +149,12 @@ enum WeatherSource {
   WEATHER_SOURCE_OPEN_METEO
 };
 
+enum ForecastView : uint8_t { FORECAST_DAILY, FORECAST_HOURLY };
+
 static uint8_t weather_source = WEATHER_SOURCE_UNKNOWN;
 static String weather_updated_at;
+static WeatherSnapshot weather_snapshot{};
+static ForecastView active_forecast_view = FORECAST_DAILY;
 
 // Screen dimming variables
 static bool night_mode_active = false;
@@ -302,6 +307,7 @@ static int qweather_icon_to_wmo(int icon);
 static bool qweather_icon_is_day(int icon);
 static void startup_weather_timer_cb(lv_timer_t *timer);
 static void rebuild_ui(bool reopen_settings);
+static void render_weather_snapshot();
 
 
 int day_of_week(int y, int m, int d) {
@@ -330,6 +336,141 @@ String hour_of_day(int hour) {
 
     return String(displayHour) + suffix;
   }
+}
+
+static const char *weather_condition_name(int code) {
+  const char *const *conditions =
+      get_strings(current_language)->weather_conditions;
+  if (code >= 51 && code <= 57) return conditions[4];
+  if (code >= 71 && code <= 77) return conditions[8];
+
+  switch (code) {
+    case 0:
+    case 1:
+      return conditions[0];
+    case 2:
+      return conditions[1];
+    case 3:
+      return conditions[2];
+    case 45:
+    case 48:
+      return conditions[3];
+    case 61:
+    case 63:
+    case 80:
+    case 81:
+      return conditions[5];
+    case 65:
+    case 82:
+      return conditions[6];
+    case 66:
+    case 67:
+      return conditions[7];
+    case 85:
+    case 86:
+      return conditions[8];
+    case 95:
+    case 96:
+    case 99:
+      return conditions[9];
+    default:
+      return conditions[2];
+  }
+}
+
+static void publish_weather_snapshot(const WeatherSnapshot &candidate) {
+  weather_snapshot = candidate;
+  render_weather_snapshot();
+}
+
+static void render_portrait_snapshot() {
+  const LocalizedStrings *strings = get_strings(current_language);
+  const char unit = use_fahrenheit ? 'F' : 'C';
+  const CurrentConditions &current = weather_snapshot.current;
+
+  if (current.valid) {
+    float temperature = current.temperature;
+    float feels_like = current.feels_like;
+    if (use_fahrenheit) {
+      temperature = temperature * 9.0f / 5.0f + 32.0f;
+      feels_like = feels_like * 9.0f / 5.0f + 32.0f;
+    }
+    lv_label_set_text_fmt(lbl_today_temp, "%.0f°%c", temperature, unit);
+    lv_label_set_text_fmt(
+        lbl_today_feels_like, "%s %.0f°%c",
+        strings->feels_like_temp, feels_like, unit);
+    lv_img_set_src(
+        img_today_icon, choose_image(current.weather_code, current.is_day));
+    lv_obj_clear_flag(img_today_icon, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_label_set_text(lbl_today_temp, strings->temp_placeholder);
+    lv_label_set_text(lbl_today_feels_like, strings->feels_like_temp);
+    lv_img_set_src(img_today_icon, &image_partly_cloudy);
+    lv_obj_add_flag(img_today_icon, LV_OBJ_FLAG_HIDDEN);
+  }
+
+  for (int i = 0; i < FORECAST_POINT_COUNT; i++) {
+    const DailyForecastPoint &point = weather_snapshot.daily[i];
+    if (point.valid) {
+      float minimum = point.minimum;
+      float maximum = point.maximum;
+      if (use_fahrenheit) {
+        minimum = minimum * 9.0f / 5.0f + 32.0f;
+        maximum = maximum * 9.0f / 5.0f + 32.0f;
+      }
+      lv_label_set_text_fmt(
+          lbl_daily_day[i], "%02u/%02u",
+          static_cast<unsigned>(point.month),
+          static_cast<unsigned>(point.day));
+      lv_label_set_text_fmt(lbl_daily_high[i], "%.0f°%c", maximum, unit);
+      lv_label_set_text_fmt(lbl_daily_low[i], "%.0f°%c", minimum, unit);
+      lv_img_set_src(img_daily[i], choose_icon(point.weather_code, 1));
+      lv_obj_clear_flag(img_daily[i], LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_label_set_text(lbl_daily_day[i], "--");
+      lv_label_set_text(lbl_daily_high[i], "--");
+      lv_label_set_text(lbl_daily_low[i], "--");
+      lv_img_set_src(img_daily[i], &icon_partly_cloudy);
+      lv_obj_add_flag(img_daily[i], LV_OBJ_FLAG_HIDDEN);
+    }
+
+    const HourlyForecastPoint &hourly_point = weather_snapshot.hourly[i];
+    if (hourly_point.valid) {
+      float temperature = hourly_point.temperature;
+      if (use_fahrenheit) {
+        temperature = temperature * 9.0f / 5.0f + 32.0f;
+      }
+      if (i == 0) {
+        lv_label_set_text(lbl_hourly[i], strings->now);
+      } else {
+        String hour_name = hour_of_day(hourly_point.hour);
+        lv_label_set_text(lbl_hourly[i], hour_name.c_str());
+      }
+      lv_label_set_text_fmt(
+          lbl_hourly_temp[i], "%.0f°%c", temperature, unit);
+      lv_img_set_src(
+          img_hourly[i],
+          choose_icon(hourly_point.weather_code, hourly_point.is_day));
+      lv_obj_clear_flag(img_hourly[i], LV_OBJ_FLAG_HIDDEN);
+      if (hourly_point.has_precipitation) {
+        lv_label_set_text_fmt(
+            lbl_precipitation_probability[i], "%.0f%%",
+            hourly_point.precipitation_probability);
+      } else {
+        lv_label_set_text(lbl_precipitation_probability[i], "");
+      }
+    } else {
+      lv_label_set_text(lbl_hourly[i], "--");
+      lv_label_set_text(lbl_hourly_temp[i], "--");
+      lv_label_set_text(lbl_precipitation_probability[i], "");
+      lv_img_set_src(img_hourly[i], &icon_partly_cloudy);
+      lv_obj_add_flag(img_hourly[i], LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+}
+
+static void render_weather_snapshot() {
+  render_portrait_snapshot();
 }
 
 String urlencode(const String &str) {
@@ -584,6 +725,7 @@ static void rebuild_ui(bool reopen_settings) {
   location_win = nullptr;
   lv_obj_clean(lv_scr_act());
   create_ui();
+  render_weather_snapshot();
   if (reopen_settings) create_settings_window();
 }
 
@@ -1036,6 +1178,7 @@ void create_ui() {
 
   img_today_icon = lv_img_create(scr);
   lv_img_set_src(img_today_icon, &image_partly_cloudy);
+  lv_obj_add_flag(img_today_icon, LV_OBJ_FLAG_HIDDEN);
   lv_obj_align(img_today_icon, LV_ALIGN_TOP_MID, -64, 12);
 
   static lv_style_t default_label_style;
@@ -1116,6 +1259,7 @@ void create_ui() {
     lv_obj_align(lbl_daily_low[i], LV_ALIGN_TOP_RIGHT, -50, i * 24);
 
     lv_img_set_src(img_daily[i], &icon_partly_cloudy);
+    lv_obj_add_flag(img_daily[i], LV_OBJ_FLAG_HIDDEN);
     lv_obj_align(img_daily[i], LV_ALIGN_TOP_LEFT, 72, i * 24);
   }
 
@@ -1154,10 +1298,16 @@ void create_ui() {
     lv_obj_align(lbl_precipitation_probability[i], LV_ALIGN_TOP_RIGHT, -55, i * 24);
 
     lv_img_set_src(img_hourly[i], &icon_partly_cloudy);
+    lv_obj_add_flag(img_hourly[i], LV_OBJ_FLAG_HIDDEN);
     lv_obj_align(img_hourly[i], LV_ALIGN_TOP_LEFT, 72, i * 24);
   }
 
-  lv_obj_add_flag(box_hourly, LV_OBJ_FLAG_HIDDEN);
+  if (active_forecast_view == FORECAST_HOURLY) {
+    lv_obj_add_flag(box_daily, LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text(lbl_forecast, strings->hourly_forecast);
+  } else {
+    lv_obj_add_flag(box_hourly, LV_OBJ_FLAG_HIDDEN);
+  }
 
   // Create clock label in the top-right corner
   lbl_clock = lv_label_create(scr);
@@ -1395,6 +1545,7 @@ static void start_touch_calibration() {
 
 void daily_cb(lv_event_t *e) {
   play_click_sound();
+  active_forecast_view = FORECAST_HOURLY;
   const LocalizedStrings* strings = get_strings(current_language);
   lv_obj_add_flag(box_daily, LV_OBJ_FLAG_HIDDEN);
   lv_label_set_text(lbl_forecast, strings->hourly_forecast);
@@ -1403,6 +1554,7 @@ void daily_cb(lv_event_t *e) {
 
 void hourly_cb(lv_event_t *e) {
   play_click_sound();
+  active_forecast_view = FORECAST_DAILY;
   const LocalizedStrings* strings = get_strings(current_language);
   lv_obj_add_flag(box_hourly, LV_OBJ_FLAG_HIDDEN);
   lv_label_set_text(lbl_forecast, strings->seven_day_forecast);
@@ -1790,11 +1942,6 @@ static void settings_event_handler(lv_event_t *e) {
 
   if (tgt == language_dropdown && code == LV_EVENT_VALUE_CHANGED) {
     current_language = (Language)lv_dropdown_get_selected(language_dropdown);
-    // Update the UI immediately to reflect language change
-    lv_obj_del(settings_win);
-    settings_win = nullptr;
-    
-    // Save preferences and recreate UI with new language
     prefs.putBool("useFahrenheit", use_fahrenheit);
     prefs.putBool("use24Hour", use_24_hour);
     prefs.putBool("useNightMode", use_night_mode);
@@ -1802,13 +1949,7 @@ static void settings_event_handler(lv_event_t *e) {
     prefs.putUInt("soundEffect", sound_effect);
     prefs.putUInt("language", current_language);
 
-    lv_keyboard_set_textarea(kb, nullptr);
-    lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
-    
-    // Recreate the main UI with the new language
-    lv_obj_clean(lv_scr_act());
-    create_ui();
-    fetch_and_update_weather();
+    rebuild_ui(true);
     return;
   }
 
@@ -1994,77 +2135,89 @@ static void fetch_open_meteo_weather() {
   http.setConnectTimeout(WEATHER_HTTP_TIMEOUT_MS);
   http.setTimeout(WEATHER_HTTP_TIMEOUT_MS);
   if (http.GET() == HTTP_CODE_OK) {
+    WeatherSnapshot candidate{};
     Serial.println("Updated weather from open-meteo: " + url);
 
     String payload = http.getString();
     DynamicJsonDocument doc(32 * 1024);
     if (deserializeJson(doc, payload) == DeserializationError::Ok) {
-      float t_now = doc["current"]["temperature_2m"].as<float>();
-      float t_ap = doc["current"]["apparent_temperature"].as<float>();
-      int code_now = doc["current"]["weather_code"].as<int>();
-      int is_day = doc["current"]["is_day"].as<int>();
-      if (use_fahrenheit) {
-        t_now = t_now * 9.0 / 5.0 + 32.0;
-        t_ap = t_ap * 9.0 / 5.0 + 32.0;
-      }
-
-      const LocalizedStrings* strings = get_strings(current_language);
-      int utc_offset_seconds = doc["utc_offset_seconds"].as<int>();
-      configTime(utc_offset_seconds, 0, "pool.ntp.org", "time.nist.gov");
-      update_home_status(WEATHER_SOURCE_OPEN_METEO, doc["current"]["time"] | "");
-
-      char unit = use_fahrenheit ? 'F' : 'C';
-      lv_label_set_text_fmt(lbl_today_temp, "%.0f°%c", t_now, unit);
-      lv_label_set_text_fmt(lbl_today_feels_like, "%s %.0f°%c", strings->feels_like_temp, t_ap, unit);
-      lv_img_set_src(img_today_icon, choose_image(code_now, is_day));
-
+      JsonObject current = doc["current"].as<JsonObject>();
       JsonArray times = doc["daily"]["time"].as<JsonArray>();
       JsonArray tmin = doc["daily"]["temperature_2m_min"].as<JsonArray>();
       JsonArray tmax = doc["daily"]["temperature_2m_max"].as<JsonArray>();
       JsonArray weather_codes = doc["daily"]["weather_code"].as<JsonArray>();
-      for (int i = 0; i < 7; i++) {
-        const char *date = times[i];
-        int year = atoi(date);
-        int mon = atoi(date + 5);
-        int dayd = atoi(date + 8);
-        int dow = day_of_week(year, mon, dayd);
-        const char *day_str = (i == 0 && current_language != LANG_FR)
-                                ? strings->today
-                                : strings->weekdays[dow];
-
-        float mn = tmin[i].as<float>();
-        float mx = tmax[i].as<float>();
-        if (use_fahrenheit) {
-          mn = mn * 9.0 / 5.0 + 32.0;
-          mx = mx * 9.0 / 5.0 + 32.0;
-        }
-        lv_label_set_text_fmt(lbl_daily_day[i], "%s", day_str);
-        lv_label_set_text_fmt(lbl_daily_high[i], "%.0f°%c", mx, unit);
-        lv_label_set_text_fmt(lbl_daily_low[i], "%.0f°%c", mn, unit);
-        lv_img_set_src(img_daily[i], choose_icon(weather_codes[i].as<int>(), (i == 0) ? is_day : 1));
-      }
-
       JsonArray hours = doc["hourly"]["time"].as<JsonArray>();
       JsonArray hourly_temps = doc["hourly"]["temperature_2m"].as<JsonArray>();
       JsonArray precipitation_probabilities = doc["hourly"]["precipitation_probability"].as<JsonArray>();
       JsonArray hourly_weather_codes = doc["hourly"]["weather_code"].as<JsonArray>();
       JsonArray hourly_is_day = doc["hourly"]["is_day"].as<JsonArray>();
-      for (int i = 0; i < 7; i++) {
-        const char *date_time = hours[i];
-        int hour = atoi(date_time + 11);
-        String hour_name = hour_of_day(hour);
-        float precipitation_probability = precipitation_probabilities[i].as<float>();
-        float temp = hourly_temps[i].as<float>();
-        if (use_fahrenheit) temp = temp * 9.0 / 5.0 + 32.0;
 
-        if (i == 0 && current_language != LANG_FR) {
-          lv_label_set_text(lbl_hourly[i], strings->now);
-        } else {
-          lv_label_set_text(lbl_hourly[i], hour_name.c_str());
+      bool arrays_complete =
+          !current.isNull() &&
+          !current["temperature_2m"].isNull() &&
+          !current["apparent_temperature"].isNull() &&
+          !current["weather_code"].isNull() &&
+          !current["is_day"].isNull() &&
+          times.size() >= FORECAST_POINT_COUNT &&
+          tmin.size() >= FORECAST_POINT_COUNT &&
+          tmax.size() >= FORECAST_POINT_COUNT &&
+          weather_codes.size() >= FORECAST_POINT_COUNT &&
+          hours.size() >= FORECAST_POINT_COUNT &&
+          hourly_temps.size() >= FORECAST_POINT_COUNT &&
+          precipitation_probabilities.size() >= FORECAST_POINT_COUNT &&
+          hourly_weather_codes.size() >= FORECAST_POINT_COUNT &&
+          hourly_is_day.size() >= FORECAST_POINT_COUNT;
+
+      if (!arrays_complete) {
+        Serial.println("Open-Meteo weather data incomplete.");
+      } else {
+        candidate.current.temperature = current["temperature_2m"].as<float>();
+        candidate.current.feels_like = current["apparent_temperature"].as<float>();
+        candidate.current.weather_code = current["weather_code"].as<int>();
+        candidate.current.is_day = current["is_day"].as<int>() != 0;
+        candidate.current.valid = true;
+
+        bool points_complete = true;
+        for (int i = 0; i < FORECAST_POINT_COUNT; i++) {
+          const char *date = times[i] | "";
+          const char *date_time = hours[i] | "";
+          if (strlen(date) < 10 || strlen(date_time) < 13 ||
+              tmin[i].isNull() || tmax[i].isNull() ||
+              weather_codes[i].isNull() || hourly_temps[i].isNull() ||
+              hourly_weather_codes[i].isNull() || hourly_is_day[i].isNull()) {
+            points_complete = false;
+            break;
+          }
+
+          candidate.daily[i].minimum = tmin[i].as<float>();
+          candidate.daily[i].maximum = tmax[i].as<float>();
+          candidate.daily[i].weather_code = weather_codes[i].as<int>();
+          candidate.daily[i].month = static_cast<uint8_t>(atoi(date + 5));
+          candidate.daily[i].day = static_cast<uint8_t>(atoi(date + 8));
+          candidate.daily[i].valid = true;
+
+          candidate.hourly[i].temperature = hourly_temps[i].as<float>();
+          candidate.hourly[i].weather_code = hourly_weather_codes[i].as<int>();
+          candidate.hourly[i].hour = static_cast<uint8_t>(atoi(date_time + 11));
+          candidate.hourly[i].is_day = hourly_is_day[i].as<int>() != 0;
+          candidate.hourly[i].has_precipitation =
+              !precipitation_probabilities[i].isNull();
+          if (candidate.hourly[i].has_precipitation) {
+            candidate.hourly[i].precipitation_probability =
+                precipitation_probabilities[i].as<float>();
+          }
+          candidate.hourly[i].valid = true;
         }
-        lv_label_set_text_fmt(lbl_precipitation_probability[i], "%.0f%%", precipitation_probability);
-        lv_label_set_text_fmt(lbl_hourly_temp[i], "%.0f°%c", temp, unit);
-        lv_img_set_src(img_hourly[i], choose_icon(hourly_weather_codes[i].as<int>(), hourly_is_day[i].as<int>()));
+
+        if (points_complete) {
+          int utc_offset_seconds = doc["utc_offset_seconds"].as<int>();
+          configTime(utc_offset_seconds, 0, "pool.ntp.org", "time.nist.gov");
+          String updated_at = doc["current"]["time"] | "";
+          publish_weather_snapshot(candidate);
+          update_home_status(WEATHER_SOURCE_OPEN_METEO, updated_at.c_str());
+        } else {
+          Serial.println("Open-Meteo forecast points incomplete.");
+        }
       }
     } else {
       Serial.println("Open-Meteo JSON parse failed.");
@@ -2088,10 +2241,9 @@ void fetch_and_update_weather() {
     return;
   }
 
+  WeatherSnapshot candidate{};
   DynamicJsonDocument doc(32 * 1024);
   String location_query = String(longitude) + "," + latitude;
-  const LocalizedStrings* strings = get_strings(current_language);
-  const char unit = use_fahrenheit ? 'F' : 'C';
 
   if (!request_qweather(String("/v7/weather/now?location=") + location_query, doc)) {
     Serial.println("QWeather current weather unavailable; using Open-Meteo fallback.");
@@ -2099,21 +2251,20 @@ void fetch_and_update_weather() {
     return;
   }
 
-  float t_now = doc["now"]["temp"].as<float>();
-  float t_ap = doc["now"]["feelsLike"].as<float>();
-  int q_icon_now = doc["now"]["icon"].as<int>();
-  int code_now = qweather_icon_to_wmo(q_icon_now);
-  int is_day = qweather_icon_is_day(q_icon_now);
-  if (use_fahrenheit) {
-    t_now = t_now * 9.0 / 5.0 + 32.0;
-    t_ap = t_ap * 9.0 / 5.0 + 32.0;
+  String qweather_updated_at = doc["updateTime"] | "";
+  if (doc["now"]["temp"].isNull() || doc["now"]["feelsLike"].isNull() ||
+      doc["now"]["icon"].isNull()) {
+    Serial.println("QWeather current weather incomplete; using Open-Meteo fallback.");
+    fetch_open_meteo_weather();
+    return;
   }
 
-  configTime(8 * 3600, 0, "pool.ntp.org", "time.nist.gov");
-  update_home_status(WEATHER_SOURCE_QWEATHER, doc["updateTime"] | "");
-  lv_label_set_text_fmt(lbl_today_temp, "%.0f°%c", t_now, unit);
-  lv_label_set_text_fmt(lbl_today_feels_like, "%s %.0f°%c", strings->feels_like_temp, t_ap, unit);
-  lv_img_set_src(img_today_icon, choose_image(code_now, is_day));
+  int q_icon_now = doc["now"]["icon"].as<int>();
+  candidate.current.temperature = doc["now"]["temp"].as<float>();
+  candidate.current.feels_like = doc["now"]["feelsLike"].as<float>();
+  candidate.current.weather_code = qweather_icon_to_wmo(q_icon_now);
+  candidate.current.is_day = qweather_icon_is_day(q_icon_now);
+  candidate.current.valid = true;
 
   if (!request_qweather(String("/v7/weather/7d?location=") + location_query, doc)) {
     Serial.println("QWeather daily forecast unavailable; using Open-Meteo fallback.");
@@ -2122,29 +2273,27 @@ void fetch_and_update_weather() {
   }
 
   JsonArray daily = doc["daily"].as<JsonArray>();
-  for (int i = 0; i < 7 && i < static_cast<int>(daily.size()); i++) {
+  if (daily.size() < FORECAST_POINT_COUNT) {
+    Serial.println("QWeather daily forecast incomplete; using Open-Meteo fallback.");
+    fetch_open_meteo_weather();
+    return;
+  }
+  for (int i = 0; i < FORECAST_POINT_COUNT; i++) {
     const char *date = daily[i]["fxDate"] | "";
-    if (strlen(date) < 10) continue;
-
-    int year = atoi(date);
-    int mon = atoi(date + 5);
-    int dayd = atoi(date + 8);
-    int dow = day_of_week(year, mon, dayd);
-    const char *day_str = (i == 0 && current_language != LANG_FR)
-                            ? strings->today
-                            : strings->weekdays[dow];
-    float mn = daily[i]["tempMin"].as<float>();
-    float mx = daily[i]["tempMax"].as<float>();
-    int daily_icon = qweather_icon_to_wmo(daily[i]["iconDay"].as<int>());
-    if (use_fahrenheit) {
-      mn = mn * 9.0 / 5.0 + 32.0;
-      mx = mx * 9.0 / 5.0 + 32.0;
+    if (strlen(date) < 10 || daily[i]["tempMin"].isNull() ||
+        daily[i]["tempMax"].isNull() || daily[i]["iconDay"].isNull()) {
+      Serial.println("QWeather daily point incomplete; using Open-Meteo fallback.");
+      fetch_open_meteo_weather();
+      return;
     }
 
-    lv_label_set_text_fmt(lbl_daily_day[i], "%s", day_str);
-    lv_label_set_text_fmt(lbl_daily_high[i], "%.0f°%c", mx, unit);
-    lv_label_set_text_fmt(lbl_daily_low[i], "%.0f°%c", mn, unit);
-    lv_img_set_src(img_daily[i], choose_icon(daily_icon, 1));
+    candidate.daily[i].minimum = daily[i]["tempMin"].as<float>();
+    candidate.daily[i].maximum = daily[i]["tempMax"].as<float>();
+    candidate.daily[i].weather_code = qweather_icon_to_wmo(
+        daily[i]["iconDay"].as<int>());
+    candidate.daily[i].month = static_cast<uint8_t>(atoi(date + 5));
+    candidate.daily[i].day = static_cast<uint8_t>(atoi(date + 8));
+    candidate.daily[i].valid = true;
   }
 
   if (!request_qweather(String("/v7/weather/24h?location=") + location_query, doc)) {
@@ -2154,27 +2303,36 @@ void fetch_and_update_weather() {
   }
 
   JsonArray hourly = doc["hourly"].as<JsonArray>();
-  for (int i = 0; i < 7 && i < static_cast<int>(hourly.size()); i++) {
-    const char *date_time = hourly[i]["fxTime"] | "";
-    if (strlen(date_time) < 16) continue;
-
-    int hour = atoi(date_time + 11);
-    String hour_name = hour_of_day(hour);
-    float precipitation_probability = hourly[i]["pop"].as<float>();
-    float temp = hourly[i]["temp"].as<float>();
-    int hourly_icon = hourly[i]["icon"].as<int>();
-    if (use_fahrenheit) temp = temp * 9.0 / 5.0 + 32.0;
-
-    if (i == 0 && current_language != LANG_FR) {
-      lv_label_set_text(lbl_hourly[i], strings->now);
-    } else {
-      lv_label_set_text(lbl_hourly[i], hour_name.c_str());
-    }
-    lv_label_set_text_fmt(lbl_precipitation_probability[i], "%.0f%%", precipitation_probability);
-    lv_label_set_text_fmt(lbl_hourly_temp[i], "%.0f°%c", temp, unit);
-    lv_img_set_src(img_hourly[i], choose_icon(
-        qweather_icon_to_wmo(hourly_icon), qweather_icon_is_day(hourly_icon)));
+  if (hourly.size() < FORECAST_POINT_COUNT) {
+    Serial.println("QWeather hourly forecast incomplete; using Open-Meteo fallback.");
+    fetch_open_meteo_weather();
+    return;
   }
+  for (int i = 0; i < FORECAST_POINT_COUNT; i++) {
+    const char *date_time = hourly[i]["fxTime"] | "";
+    if (strlen(date_time) < 13 || hourly[i]["temp"].isNull() ||
+        hourly[i]["icon"].isNull()) {
+      Serial.println("QWeather hourly point incomplete; using Open-Meteo fallback.");
+      fetch_open_meteo_weather();
+      return;
+    }
+
+    int hourly_icon = hourly[i]["icon"].as<int>();
+    candidate.hourly[i].temperature = hourly[i]["temp"].as<float>();
+    candidate.hourly[i].weather_code = qweather_icon_to_wmo(hourly_icon);
+    candidate.hourly[i].hour = static_cast<uint8_t>(atoi(date_time + 11));
+    candidate.hourly[i].is_day = qweather_icon_is_day(hourly_icon);
+    candidate.hourly[i].has_precipitation = !hourly[i]["pop"].isNull();
+    if (candidate.hourly[i].has_precipitation) {
+      candidate.hourly[i].precipitation_probability =
+          hourly[i]["pop"].as<float>();
+    }
+    candidate.hourly[i].valid = true;
+  }
+
+  configTime(8 * 3600, 0, "pool.ntp.org", "time.nist.gov");
+  publish_weather_snapshot(candidate);
+  update_home_status(WEATHER_SOURCE_QWEATHER, qweather_updated_at.c_str());
 }
 
 const lv_img_dsc_t* choose_image(int code, int is_day) {

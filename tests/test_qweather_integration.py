@@ -2,6 +2,7 @@
 """Static contract checks for QWeather requests and AP key configuration."""
 
 from pathlib import Path
+import re
 import unittest
 
 
@@ -10,7 +11,168 @@ WEATHER = (ROOT / "aura" / "weather.ino").read_text(encoding="utf-8")
 TRANSLATIONS = (ROOT / "aura" / "translations.h").read_text(encoding="utf-8")
 
 
+def function_body(signature: str, next_signature: str) -> str:
+    start = WEATHER.index(signature)
+    return WEATHER[start : WEATHER.index(next_signature, start)]
+
+
 class QWeatherIntegrationTests(unittest.TestCase):
+    def test_weather_snapshot_is_the_single_publish_and_render_contract(self):
+        self.assertIn('#include "forecast_model.h"', WEATHER)
+        self.assertRegex(
+            WEATHER,
+            r"enum\s+ForecastView\s*:\s*uint8_t\s*\{\s*FORECAST_DAILY\s*,\s*FORECAST_HOURLY\s*\}",
+        )
+        self.assertRegex(WEATHER, r"static\s+WeatherSnapshot\s+weather_snapshot\s*\{\s*\}")
+        self.assertRegex(
+            WEATHER,
+            r"static\s+ForecastView\s+active_forecast_view\s*=\s*FORECAST_DAILY",
+        )
+
+        declaration = WEATHER.index("static void render_weather_snapshot();")
+        publish_start = WEATHER.index("static void publish_weather_snapshot(")
+        self.assertLess(declaration, publish_start)
+        publish = function_body(
+            "static void publish_weather_snapshot(",
+            "static void render_portrait_snapshot()",
+        )
+        self.assertIn("weather_snapshot = candidate;", publish)
+        self.assertIn("render_weather_snapshot();", publish)
+        self.assertLess(
+            publish.index("weather_snapshot = candidate;"),
+            publish.index("render_weather_snapshot();"),
+        )
+
+    def test_open_meteo_builds_one_complete_candidate_before_publish(self):
+        parser = function_body(
+            "static void fetch_open_meteo_weather() {",
+            "void fetch_and_update_weather()",
+        )
+        self.assertIn("WeatherSnapshot candidate{};", parser)
+        for assignment in (
+            "candidate.current.temperature =",
+            "candidate.current.feels_like =",
+            "candidate.current.weather_code =",
+            "candidate.current.is_day =",
+            "candidate.current.valid = true",
+            "candidate.daily[i].minimum =",
+            "candidate.daily[i].maximum =",
+            "candidate.daily[i].weather_code =",
+            "candidate.daily[i].month =",
+            "candidate.daily[i].day =",
+            "candidate.daily[i].valid = true",
+            "candidate.hourly[i].temperature =",
+            "candidate.hourly[i].precipitation_probability =",
+            "candidate.hourly[i].weather_code =",
+            "candidate.hourly[i].hour =",
+            "candidate.hourly[i].is_day =",
+            "candidate.hourly[i].has_precipitation =",
+            "candidate.hourly[i].valid = true",
+        ):
+            self.assertIn(assignment, parser)
+        self.assertEqual(parser.count("publish_weather_snapshot(candidate);"), 1)
+        self.assertLess(
+            parser.index("publish_weather_snapshot(candidate);"),
+            parser.index("update_home_status(WEATHER_SOURCE_OPEN_METEO"),
+        )
+        self.assertIn("!precipitation_probabilities[i].isNull()", parser)
+
+    def test_qweather_accumulates_three_endpoints_and_publishes_once(self):
+        parser = function_body(
+            "void fetch_and_update_weather() {",
+            "const lv_img_dsc_t* choose_image",
+        )
+        self.assertIn("WeatherSnapshot candidate{};", parser)
+        self.assertIn('String qweather_updated_at = doc["updateTime"] | "";', parser)
+        self.assertLess(
+            parser.index('String qweather_updated_at = doc["updateTime"] | "";'),
+            parser.index('/v7/weather/7d'),
+        )
+        for assignment in (
+            "candidate.current.temperature =",
+            "candidate.current.feels_like =",
+            "candidate.current.weather_code = qweather_icon_to_wmo(",
+            "candidate.current.is_day = qweather_icon_is_day(",
+            "candidate.daily[i].minimum =",
+            "candidate.daily[i].maximum =",
+            "candidate.daily[i].weather_code = qweather_icon_to_wmo(",
+            "candidate.daily[i].month =",
+            "candidate.daily[i].day =",
+            "candidate.hourly[i].temperature =",
+            "candidate.hourly[i].weather_code = qweather_icon_to_wmo(",
+            "candidate.hourly[i].is_day = qweather_icon_is_day(",
+            "candidate.hourly[i].has_precipitation =",
+        ):
+            self.assertIn(assignment, parser)
+        self.assertEqual(parser.count("publish_weather_snapshot(candidate);"), 1)
+        self.assertLess(
+            parser.index("publish_weather_snapshot(candidate);"),
+            parser.index("update_home_status(WEATHER_SOURCE_QWEATHER"),
+        )
+        self.assertIn("!hourly[i][\"pop\"].isNull()", parser)
+        self.assertIn("daily.size() < FORECAST_POINT_COUNT", parser)
+        self.assertIn("hourly.size() < FORECAST_POINT_COUNT", parser)
+
+    def test_weather_parsers_do_not_write_forecast_widgets(self):
+        parsers = WEATHER[
+            WEATHER.index("static void fetch_open_meteo_weather() {") :
+            WEATHER.index("const lv_img_dsc_t* choose_image")
+        ]
+        for forbidden in (
+            "lv_label_set_text(lbl_daily_",
+            "lv_label_set_text_fmt(lbl_daily_",
+            "lv_label_set_text(lbl_hourly",
+            "lv_label_set_text_fmt(lbl_hourly",
+            "lv_label_set_text(lbl_precipitation_probability",
+            "lv_label_set_text_fmt(lbl_precipitation_probability",
+            "lv_img_set_src(img_daily",
+            "lv_img_set_src(img_hourly",
+        ):
+            self.assertNotIn(forbidden, parsers)
+
+    def test_portrait_renderer_covers_valid_invalid_and_missing_precipitation(self):
+        self.assertIn("static void render_portrait_snapshot() {", WEATHER)
+        renderer = function_body(
+            "static void render_portrait_snapshot() {",
+            "static void render_weather_snapshot()",
+        )
+        for symbol in (
+            "current.valid",
+            "weather_snapshot.daily[i]",
+            "weather_snapshot.hourly[i]",
+            "choose_image(current.weather_code, current.is_day)",
+            "choose_icon(point.weather_code, 1)",
+            "choose_icon(hourly_point.weather_code, hourly_point.is_day)",
+            "point.has_precipitation",
+            'lv_label_set_text(lbl_precipitation_probability[i], "")',
+            'lv_label_set_text(lbl_daily_day[i], "--")',
+            'lv_label_set_text(lbl_hourly[i], "--")',
+        ):
+            self.assertIn(symbol, renderer)
+        self.assertIn('"%02u/%02u"', renderer)
+        self.assertIn('"%.0f%%"', renderer)
+        self.assertIn("strings->now", renderer)
+
+    def test_weather_condition_name_maps_all_ten_localized_categories(self):
+        self.assertIn("static const char *weather_condition_name(int code) {", WEATHER)
+        mapping = function_body(
+            "static const char *weather_condition_name(int code) {",
+            "static void publish_weather_snapshot(",
+        )
+        self.assertIn("get_strings(current_language)->weather_conditions", mapping)
+        for category in range(10):
+            self.assertIn(f"conditions[{category}]", mapping)
+        for code_range in (
+            "case 0:", "case 1:", "case 2:", "case 3:",
+            "case 45:", "case 48:", "code >= 51 && code <= 57",
+            "case 61:", "case 63:", "case 80:", "case 81:",
+            "case 65:", "case 82:", "case 66:", "case 67:",
+            "code >= 71 && code <= 77", "case 85:", "case 86:",
+            "case 95:", "case 96:", "case 99:",
+        ):
+            self.assertIn(code_range, mapping)
+        self.assertRegex(mapping, r"default:\s*return conditions\[2\]")
+
     def test_qweather_api_key_is_loaded_and_exposed_in_wifi_manager(self):
         for symbol in (
             "qweather_key",
@@ -120,7 +282,7 @@ class QWeatherIntegrationTests(unittest.TestCase):
             fallback = fetch.index("fetch_open_meteo_weather();", request)
             self.assertLess(fallback - request, 300, endpoint)
 
-    def test_forecast_labels_are_initialized_before_weather_arrives(self):
+    def test_create_ui_uses_safe_placeholders_until_snapshot_rendering(self):
         create_ui = WEATHER[
             WEATHER.index("void create_ui() {") :
             WEATHER.index("void populate_results_dropdown()")
@@ -134,6 +296,8 @@ class QWeatherIntegrationTests(unittest.TestCase):
             "lbl_hourly_temp[i]",
         ):
             self.assertIn(f'lv_label_set_text({label}, "--");', create_ui)
+        self.assertNotIn("render_weather_snapshot();", create_ui)
+        self.assertNotIn("fetch_and_update_weather();", create_ui)
 
     def test_settings_can_open_qweather_configuration_portal(self):
         settings = WEATHER[WEATHER.index("void create_settings_window() {") :]
