@@ -15,6 +15,7 @@
 #include <Preferences.h>
 #include <miniz.h>
 #include "esp_system.h"
+#include "display_config.h"
 #include "translations.h"
 #include "touch_calibration.h"
 
@@ -102,6 +103,10 @@ SPIClass touchscreenSPI = SPIClass(VSPI);
 XPT2046_Touchscreen touchscreen(XPT2046_CS, XPT2046_IRQ);
 uint32_t draw_buf[DRAW_BUF_SIZE / 4];
 int x, y, z;
+static lv_display_t *display = nullptr;
+static lv_indev_t *touch_indev = nullptr;
+static ScreenRotation current_rotation = SCREEN_ROTATION_0;
+static ThemeId current_theme = THEME_DEEP_SEA;
 
 // Preferences
 static Preferences prefs;
@@ -296,6 +301,7 @@ static bool request_qweather(const String &path, DynamicJsonDocument &doc);
 static int qweather_icon_to_wmo(int icon);
 static bool qweather_icon_is_day(int icon);
 static void startup_weather_timer_cb(lv_timer_t *timer);
+static void rebuild_ui(bool reopen_settings);
 
 
 int day_of_week(int y, int m, int d) {
@@ -482,12 +488,35 @@ static TouchRawPoint average_calibration_samples() {
   };
 }
 
+static lv_display_rotation_t lv_rotation_for(ScreenRotation rotation) {
+  switch (validated_rotation(static_cast<uint32_t>(rotation))) {
+    case SCREEN_ROTATION_0:
+      return LV_DISPLAY_ROTATION_0;
+    case SCREEN_ROTATION_90:
+      return LV_DISPLAY_ROTATION_90;
+    case SCREEN_ROTATION_180:
+      return LV_DISPLAY_ROTATION_180;
+    case SCREEN_ROTATION_270:
+      return LV_DISPLAY_ROTATION_270;
+    default:
+      return LV_DISPLAY_ROTATION_0;
+  }
+}
+
+static int display_width() {
+  return geometry_for_rotation(current_rotation).width;
+}
+
+static int display_height() {
+  return geometry_for_rotation(current_rotation).height;
+}
+
 void touchscreen_read(lv_indev_t *indev, lv_indev_data_t *data) {
   if (touchscreen.tirqTouched() && touchscreen.touched()) {
     TS_Point p = touchscreen.getPoint();
 
-    x = map(p.x, 200, 3700, 1, SCREEN_WIDTH);
-    y = map(p.y, 240, 3800, 1, SCREEN_HEIGHT);
+    int portrait_x = map(p.x, 200, 3700, 1, PORTRAIT_WIDTH);
+    int portrait_y = map(p.y, 240, 3800, 1, PORTRAIT_HEIGHT);
     z = p.z;
 
     if (calibration_active) {
@@ -504,12 +533,16 @@ void touchscreen_read(lv_indev_t *indev, lv_indev_data_t *data) {
       int calibrated_x = 0;
       int calibrated_y = 0;
       if (apply_touch_calibration(touch_calibration, p.x, p.y,
-                                  SCREEN_WIDTH, SCREEN_HEIGHT,
+                                  PORTRAIT_WIDTH, PORTRAIT_HEIGHT,
                                   &calibrated_x, &calibrated_y)) {
-        x = calibrated_x;
-        y = calibrated_y;
+        portrait_x = calibrated_x;
+        portrait_y = calibrated_y;
       }
     }
+
+    portrait_x = constrain(portrait_x, 0, PORTRAIT_WIDTH - 1);
+    portrait_y = constrain(portrait_y, 0, PORTRAIT_HEIGHT - 1);
+    rotate_portrait_touch(current_rotation, portrait_x, portrait_y, &x, &y);
 
     // Handle touch during dimmed screen
     if (!calibration_active && night_mode_active) {
@@ -542,6 +575,16 @@ void touchscreen_read(lv_indev_t *indev, lv_indev_data_t *data) {
   }
 }
 
+static void rebuild_ui(bool reopen_settings) {
+  if (kb) lv_keyboard_set_textarea(kb, nullptr);
+  kb = nullptr;
+  settings_win = nullptr;
+  location_win = nullptr;
+  lv_obj_clean(lv_scr_act());
+  create_ui();
+  if (reopen_settings) create_settings_window();
+}
+
 void setup() {
   Serial.begin(115200);
   delay(100);
@@ -553,18 +596,10 @@ void setup() {
 
   lv_init();
 
-  // Init touchscreen
-  touchscreenSPI.begin(XPT2046_CLK, XPT2046_MISO, XPT2046_MOSI, XPT2046_CS);
-  touchscreen.begin(touchscreenSPI);
-  touchscreen.setRotation(0);
-
-  lv_display_t *disp = lv_tft_espi_create(SCREEN_WIDTH, SCREEN_HEIGHT, draw_buf, sizeof(draw_buf));
-  lv_indev_t *indev = lv_indev_create();
-  lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
-  lv_indev_set_read_cb(indev, touchscreen_read);
-
-  // Load saved prefs
+  // Load saved prefs before the display is created so its rotation is ready.
   prefs.begin("weather", false);
+  current_rotation = validated_rotation(prefs.getUInt("screenRotation", SCREEN_ROTATION_0));
+  current_theme = validated_theme(prefs.getUInt("theme", THEME_DEEP_SEA));
   String lat = prefs.getString("latitude", LATITUDE_DEFAULT);
   String lon = prefs.getString("longitude", LONGITUDE_DEFAULT);
   use_fahrenheit = prefs.getBool("useFahrenheit", false);
@@ -592,6 +627,18 @@ void setup() {
   qweather_key_param.setValue(qweather_key, sizeof(qweather_key));
   load_touch_calibration();
   analogWrite(LCD_BACKLIGHT_PIN, brightness);
+
+  // Init touchscreen
+  touchscreenSPI.begin(XPT2046_CLK, XPT2046_MISO, XPT2046_MOSI, XPT2046_CS);
+  touchscreen.begin(touchscreenSPI);
+  touchscreen.setRotation(0);
+
+  display = lv_tft_espi_create(PORTRAIT_WIDTH, PORTRAIT_HEIGHT, draw_buf, sizeof(draw_buf));
+  lv_display_set_rotation(display, lv_rotation_for(current_rotation));
+  touch_indev = lv_indev_create();
+  lv_indev_set_type(touch_indev, LV_INDEV_TYPE_POINTER);
+  lv_indev_set_display(touch_indev, display);
+  lv_indev_set_read_cb(touch_indev, touchscreen_read);
 
   // Start saved Wi-Fi credentials without blocking the display or touch loop.
   configure_wifi_manager(wifi_manager);

@@ -22,8 +22,8 @@ class TouchCalibrationContractTests(unittest.TestCase):
     def test_calibration_is_applied_and_uncalibrated_mapping_remains(self):
         self.assertIn('#include "touch_calibration.h"', WEATHER)
         self.assertIn("apply_touch_calibration", WEATHER)
-        self.assertIn("map(p.x, 200, 3700, 1, SCREEN_WIDTH)", WEATHER)
-        self.assertIn("map(p.y, 240, 3800, 1, SCREEN_HEIGHT)", WEATHER)
+        self.assertIn("map(p.x, 200, 3700, 1, PORTRAIT_WIDTH)", WEATHER)
+        self.assertIn("map(p.y, 240, 3800, 1, PORTRAIT_HEIGHT)", WEATHER)
 
     def test_persistence_contains_all_six_coefficients(self):
         for key in (
