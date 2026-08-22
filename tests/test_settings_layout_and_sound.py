@@ -92,6 +92,68 @@ class SettingsLayoutAndSoundTests(unittest.TestCase):
         self.assertNotIn("lv_obj_align_to(lbl_24hr, unit_switch, LV_ALIGN_OUT_RIGHT_MID", settings)
         self.assertNotIn("lv_obj_align_to(btn_reset, btn_change_loc, LV_ALIGN_OUT_RIGHT_MID", settings)
 
+    def test_display_preferences_use_one_coalescing_async_apply(self):
+        self.assertIn("struct PendingDisplayPreferences", WEATHER)
+        self.assertIn("static bool display_preferences_async_pending = false;", WEATHER)
+        helpers_start = WEATHER.index("static void apply_control_part(")
+        schedule_start = WEATHER.index("static void schedule_display_preferences_apply(", helpers_start)
+        schedule = WEATHER[
+            schedule_start :
+            WEATHER.index("static void apply_display_preferences_async", schedule_start)
+        ]
+        self.assertIn("pending_display_preferences.theme =", schedule)
+        self.assertIn("pending_display_preferences.rotation =", schedule)
+        self.assertIn("if (display_preferences_async_pending) return;", schedule)
+        self.assertEqual(schedule.count("lv_async_call(apply_display_preferences_async"), 1)
+
+        apply_start = WEATHER.index("static void apply_display_preferences_async", schedule_start)
+        apply = WEATHER[
+            apply_start : WEATHER.index("void wifi_splash_screen()", apply_start)
+        ]
+        self.assertIn("display_preferences_async_pending = false;", apply)
+        self.assertIn("current_theme = validated_theme", apply)
+        self.assertIn("current_rotation = validated_rotation", apply)
+        self.assertIn('prefs.putUInt("theme"', apply)
+        self.assertIn('prefs.putUInt("screenRotation"', apply)
+        self.assertIn("lv_display_set_rotation(display, lv_rotation_for(current_rotation));", apply)
+        self.assertEqual(apply.count("rebuild_ui(pending.reopen_settings);"), 1)
+        self.assertNotIn("fetch_and_update_weather", apply)
+
+    def test_theme_and_rotation_events_only_schedule_cached_ui_rebuild(self):
+        handler = WEATHER[
+            WEATHER.index("static void settings_event_handler(lv_event_t *e) {") :
+            WEATHER.index("static void refresh_weather_after_click_sound")
+        ]
+        self.assertIn("for (uint8_t i = 0; i < THEME_COUNT; i++)", handler)
+        self.assertIn("if (tgt == rotation_buttonmatrix", handler)
+        theme_branch = handler[
+            handler.index("for (uint8_t i = 0; i < THEME_COUNT; i++)") :
+            handler.index("if (tgt == rotation_buttonmatrix")
+        ]
+        rotation_branch = handler[
+            handler.index("if (tgt == rotation_buttonmatrix") :
+            handler.index("if (tgt == touch_calibration_btn")
+        ]
+        for branch in (theme_branch, rotation_branch):
+            self.assertIn("schedule_display_preferences_apply(", branch)
+            self.assertNotIn("lv_obj_del", branch)
+            self.assertNotIn("rebuild_ui", branch)
+            self.assertNotIn("fetch_and_update_weather", branch)
+
+    def test_display_rows_are_localized_stable_and_scrollable_in_both_orientations(self):
+        settings = WEATHER[WEATHER.index("void create_settings_window() {") :]
+        for localized_field in (
+            "strings->display_settings",
+            "strings->theme",
+            "strings->screen_orientation",
+            "strings->touch_rotation",
+        ):
+            self.assertIn(localized_field, settings)
+        self.assertIn("lv_obj_t *theme_row = create_row(68);", settings)
+        self.assertIn("lv_obj_t *rotation_row = create_row(68);", settings)
+        self.assertIn("lv_obj_set_scroll_dir(cont, LV_DIR_VER)", settings)
+        self.assertIn("lv_obj_set_size(settings_win, display_width(), display_height())", settings)
+
     def test_location_dialog_uses_current_logical_display_size(self):
         start = WEATHER.index("void create_location_dialog() {")
         dialog = WEATHER[

@@ -97,11 +97,22 @@ class DisplayRotationContractTests(unittest.TestCase):
         self.assertIn("y = portrait_y;", touch)
         self.assertNotIn("rotate_portrait_touch", touch)
 
-    def test_calibration_overlay_uses_logical_dimensions_and_rotates_targets_only(self):
-        calibration_start = function_body("static void start_touch_calibration")
+    def test_calibration_temporarily_uses_portrait_dimensions_and_targets(self):
+        calibration_start = function_body("static void start_touch_calibration()")
         self.assertIn(
-            "lv_obj_set_size(calibration_overlay, display_width(), display_height());",
+            "calibration_previous_rotation = current_rotation;",
             calibration_start,
+        )
+        self.assertIn("current_rotation = SCREEN_ROTATION_0;", calibration_start)
+        self.assertIn(
+            "lv_display_set_rotation(display, LV_DISPLAY_ROTATION_0);",
+            calibration_start,
+        )
+
+        overlay = function_body("static void create_touch_calibration_overlay")
+        self.assertIn(
+            "lv_obj_set_size(calibration_overlay, PORTRAIT_WIDTH, PORTRAIT_HEIGHT);",
+            overlay,
         )
 
         target_update = function_body("static void update_calibration_target")
@@ -109,14 +120,11 @@ class DisplayRotationContractTests(unittest.TestCase):
             "const TouchScreenPoint portrait_target = TOUCH_CALIBRATION_TARGETS[calibration_target_index];",
             target_update,
         )
-        self.assertIn(
-            "rotate_portrait_touch(current_rotation, portrait_target.x, portrait_target.y, &target_x, &target_y);",
-            target_update,
-        )
-        self.assertIn("target_x - 12,", target_update)
-        self.assertIn("target_y - 12);", target_update)
+        self.assertNotIn("rotate_portrait_touch", target_update)
+        self.assertIn("static_cast<int>(portrait_target.x) - 12,", target_update)
+        self.assertIn("static_cast<int>(portrait_target.y) - 12);", target_update)
 
-        finish = function_body("static void finish_touch_calibration")
+        finish = function_body("static void finish_touch_calibration(bool success)")
         self.assertIn("targets[i] = TOUCH_CALIBRATION_TARGETS[i];", finish)
         self.assertIn("fit_touch_calibration(calibration_points, targets, 5, &fitted)", finish)
 

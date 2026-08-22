@@ -68,6 +68,79 @@ class TouchCalibrationContractTests(unittest.TestCase):
         self.assertIn("lv_obj_set_width(instructions, 170)", WEATHER)
         self.assertIn("lv_obj_align(cancel, LV_ALIGN_BOTTOM_MID, 0, -44)", WEATHER)
 
+    def test_calibration_temporarily_uses_portrait_and_restores_previous_rotation(self):
+        self.assertIn("calibration_previous_rotation", WEATHER)
+        start = WEATHER[
+            WEATHER.index("static void start_touch_calibration() {") :
+            WEATHER.index("void daily_cb", WEATHER.index("static void start_touch_calibration() {"))
+        ]
+        self.assertIn("calibration_previous_rotation = current_rotation;", start)
+        self.assertIn("current_rotation = SCREEN_ROTATION_0;", start)
+        self.assertIn("lv_display_set_rotation(display, LV_DISPLAY_ROTATION_0);", start)
+        self.assertNotIn('prefs.putUInt("screenRotation"', start)
+        self.assertIn("create_touch_calibration_overlay();", start)
+
+        restore = WEATHER[
+            WEATHER.index("static void restore_rotation_after_calibration(bool success) {") :
+            WEATHER.index("static void calibration_timer_cb", WEATHER.index("static void restore_rotation_after_calibration(bool success) {"))
+        ]
+        self.assertIn("current_rotation = calibration_previous_rotation;", restore)
+        self.assertIn("lv_display_set_rotation(display, lv_rotation_for(current_rotation));", restore)
+        self.assertLess(restore.index("rebuild_ui(false);"), restore.index("show_calibration_result(success);"))
+
+    def test_calibration_start_clears_old_ui_pointers_before_cleaning_screen(self):
+        start = WEATHER[
+            WEATHER.index("static void start_touch_calibration() {") :
+            WEATHER.index("void daily_cb", WEATHER.index("static void start_touch_calibration() {"))
+        ]
+        for reset in (
+            "kb = nullptr;",
+            "settings_win = nullptr;",
+            "location_win = nullptr;",
+            "lbl_settings_location = nullptr;",
+        ):
+            self.assertIn(reset, start)
+            self.assertLess(start.index(reset), start.index("lv_obj_clean(lv_scr_act());"))
+        self.assertIn("lv_keyboard_set_textarea(kb, nullptr);", start)
+
+        overlay = WEATHER[
+            WEATHER.index("static void create_touch_calibration_overlay() {") :
+            WEATHER.index("static void start_touch_calibration()", WEATHER.index("static void create_touch_calibration_overlay() {"))
+        ]
+        self.assertIn("lv_obj_set_size(calibration_overlay, PORTRAIT_WIDTH, PORTRAIT_HEIGHT);", overlay)
+        self.assertNotIn("rotate_portrait_touch", overlay)
+
+    def test_every_calibration_exit_is_coalesced_through_finish(self):
+        self.assertIn("static bool calibration_finish_pending = false;", WEATHER)
+        self.assertIn("static void queue_touch_calibration_finish(bool success)", WEATHER)
+        self.assertIn("lv_async_call(finish_touch_calibration_async", WEATHER)
+        cancel = WEATHER[
+            WEATHER.index("static void calibration_cancel_event_cb") :
+            WEATHER.index("static void finish_touch_calibration", WEATHER.index("static void calibration_cancel_event_cb"))
+        ]
+        self.assertIn("queue_touch_calibration_finish(false);", cancel)
+        self.assertNotIn("lv_obj_del", cancel)
+        timer = WEATHER[
+            WEATHER.index("static void calibration_timer_cb") :
+            WEATHER.index("static void create_touch_calibration_overlay", WEATHER.index("static void calibration_timer_cb"))
+        ]
+        self.assertIn("queue_touch_calibration_finish(false);", timer)
+        self.assertIn("queue_touch_calibration_finish(true);", timer)
+        finish = WEATHER[
+            WEATHER.index("static void finish_touch_calibration(bool success) {") :
+            WEATHER.index("static void calibration_timer_cb", WEATHER.index("static void finish_touch_calibration(bool success) {"))
+        ]
+        self.assertEqual(finish.count("restore_rotation_after_calibration(success);"), 1)
+
+    def test_calibration_start_is_deferred_outside_settings_event(self):
+        handler = WEATHER[
+            WEATHER.index("if (tgt == touch_calibration_btn") :
+            WEATHER.index("if (tgt == qweather_config_btn")
+        ]
+        self.assertIn("queue_touch_calibration_start();", handler)
+        self.assertNotIn("start_touch_calibration();", handler)
+        self.assertNotIn("lv_obj_del", handler)
+
 
 if __name__ == "__main__":
     unittest.main()

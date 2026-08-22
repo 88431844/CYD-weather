@@ -165,8 +165,8 @@ int main() {{
             "启动页": ("void wifi_splash_screen() {", "static void create_portrait_ui(lv_obj_t *scr) {", "theme_palette(current_theme)"),
             "竖屏主页": ("static void create_portrait_ui(lv_obj_t *scr) {", "void create_ui() {", "theme_palette(current_theme)"),
             "和风天气配置提示": ("static void open_qweather_config_portal() {", "static void qweather_cancel_event_cb", "apply_msgbox_theme("),
-            "校准结果消息框": ("static void finish_touch_calibration(bool success) {", "static void calibration_timer_cb", "apply_msgbox_theme("),
-            "触摸校准页": ("static void start_touch_calibration() {", "void daily_cb", "theme_palette(current_theme)"),
+            "校准结果消息框": ("static void show_calibration_result(bool success) {", "static void restore_rotation_after_calibration", "apply_msgbox_theme("),
+            "触摸校准页": ("static void create_touch_calibration_overlay() {", "static void start_touch_calibration()", "theme_palette(current_theme)"),
             "重置消息框": ("static void reset_wifi_event_handler(lv_event_t *e) {", "static void reset_confirm_yes_cb", "apply_msgbox_theme("),
             "位置窗口": ("void create_location_dialog() {", "void create_settings_window()", "theme_palette(current_theme)"),
             "设置窗": ("void create_settings_window() {", "static void settings_event_handler", "theme_palette(current_theme)"),
@@ -232,6 +232,55 @@ int main() {{
         ):
             self.assertIn(getter, helpers)
 
+    def test_settings_has_five_localized_theme_swatches(self):
+        settings = WEATHER[WEATHER.index("void create_settings_window() {") :]
+        self.assertIn("theme_buttons[THEME_COUNT]", WEATHER)
+        self.assertIn("for (uint8_t i = 0; i < THEME_COUNT; i++)", settings)
+        self.assertIn("strings->theme_names[i]", settings)
+        self.assertIn("theme_palette(static_cast<ThemeId>(i)).accent", settings)
+        self.assertIn("lv_obj_set_size(theme_buttons[i], 38, 42)", settings)
+        self.assertIn("lv_obj_set_style_pad_column(theme_row, 3", settings)
+        self.assertIn("apply_theme_swatch_theme(", settings)
+
+    def test_rotation_buttonmatrix_and_required_touch_switch_are_complete(self):
+        settings = WEATHER[WEATHER.index("void create_settings_window() {") :]
+        self.assertIn("rotation_buttonmatrix", WEATHER)
+        self.assertIn('static const char *rotation_map[] = {"0°", "90°", "180°", "270°", ""};', WEATHER)
+        self.assertIn("lv_buttonmatrix_set_map(rotation_buttonmatrix, rotation_map);", settings)
+        self.assertIn("lv_buttonmatrix_set_one_checked(rotation_buttonmatrix, true);", settings)
+        self.assertIn("LV_BUTTONMATRIX_CTRL_CHECKABLE", settings)
+        self.assertIn("LV_BUTTONMATRIX_CTRL_CHECKED", settings)
+        self.assertIn("apply_buttonmatrix_theme(rotation_buttonmatrix);", settings)
+        self.assertIn("lv_label_set_text(touch_rotation_label, strings->touch_rotation);", settings)
+        self.assertIn("lv_obj_add_state(touch_rotation_switch, LV_STATE_CHECKED);", settings)
+        self.assertIn("lv_obj_add_state(touch_rotation_switch, LV_STATE_DISABLED);", settings)
+        self.assertNotIn("lv_obj_add_event_cb(touch_rotation_switch", settings)
+
+    def test_display_control_helpers_cover_selected_pressed_and_disabled_states(self):
+        self.assertIn("static void apply_theme_swatch_theme(", WEATHER)
+        self.assertIn("static void apply_buttonmatrix_theme(", WEATHER)
+        helpers_start = WEATHER.index(
+            "static void apply_theme_swatch_theme(",
+            WEATHER.index("static void apply_control_part("),
+        )
+        helpers_end = WEATHER.index("void wifi_splash_screen()", helpers_start)
+        helpers = WEATHER[helpers_start:helpers_end]
+        for helper in ("apply_theme_swatch_theme", "apply_buttonmatrix_theme"):
+            self.assertIn(f"static void {helper}(", helpers)
+        for selector in (
+            "LV_PART_ITEMS | LV_STATE_DEFAULT",
+            "LV_PART_ITEMS | LV_STATE_CHECKED",
+            "LV_PART_ITEMS | LV_STATE_PRESSED",
+            "LV_PART_ITEMS | LV_STATE_DISABLED",
+        ):
+            self.assertIn(selector, helpers)
+        self.assertIn("selected ? 2 : 1", helpers)
+        self.assertRegex(
+            helpers,
+            r"lv_obj_set_style_border_width\(\s*button, selected \? 2 : 1,\s*"
+            r"LV_PART_MAIN \| LV_STATE_CHECKED\);",
+        )
+
     def test_settings_and_location_controls_use_theme_helpers(self):
         settings_start = WEATHER.index("void create_settings_window() {")
         settings_end = WEATHER.index("static void settings_event_handler", settings_start)
@@ -268,7 +317,7 @@ int main() {{
     def test_message_boxes_theme_containers_and_buttons(self):
         cases = (
             ("static void open_qweather_config_portal() {", "static void qweather_cancel_event_cb", ("cancel",)),
-            ("static void finish_touch_calibration(bool success) {", "static void calibration_timer_cb", ("close",)),
+            ("static void show_calibration_result(bool success) {", "static void restore_rotation_after_calibration", ("close",)),
             ("static void reset_wifi_event_handler(lv_event_t *e) {", "static void reset_confirm_yes_cb", ("close", "btn_no", "btn_yes")),
         )
         for start_marker, end_marker, buttons in cases:

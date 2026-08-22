@@ -202,6 +202,20 @@ static lv_obj_t *touch_calibration_btn;
 static lv_obj_t *sound_enabled_switch;
 static lv_obj_t *sound_effect_dropdown;
 static lv_obj_t *qweather_config_btn;
+static lv_obj_t *theme_buttons[THEME_COUNT];
+static lv_obj_t *rotation_buttonmatrix;
+static const char *rotation_map[] = {"0°", "90°", "180°", "270°", ""};
+
+struct PendingDisplayPreferences {
+  ThemeId theme;
+  ScreenRotation rotation;
+  bool reopen_settings;
+};
+
+static PendingDisplayPreferences pending_display_preferences = {
+  THEME_DEEP_SEA, SCREEN_ROTATION_0, true
+};
+static bool display_preferences_async_pending = false;
 
 static constexpr int LANDSCAPE_HEADER_HEIGHT = 58;
 static constexpr int LANDSCAPE_CHART_X = 6;
@@ -252,6 +266,10 @@ static lv_obj_t *calibration_overlay = nullptr;
 static lv_obj_t *calibration_target = nullptr;
 static lv_obj_t *calibration_progress_label = nullptr;
 static lv_timer_t *calibration_timer = nullptr;
+static ScreenRotation calibration_previous_rotation = SCREEN_ROTATION_0;
+static bool calibration_start_pending = false;
+static bool calibration_finish_pending = false;
+static bool calibration_pending_success = false;
 
 // Weather icons
 LV_IMG_DECLARE(icon_blizzard);
@@ -319,6 +337,9 @@ static void apply_dropdown_theme(lv_obj_t *dropdown);
 static void apply_textarea_theme(lv_obj_t *textarea);
 static void apply_keyboard_theme(lv_obj_t *keyboard);
 static void apply_msgbox_theme(lv_obj_t *mbox);
+static void apply_theme_swatch_theme(lv_obj_t *button, ThemeId theme,
+                                     bool selected);
+static void apply_buttonmatrix_theme(lv_obj_t *buttonmatrix);
 static void create_portrait_ui(lv_obj_t *scr);
 static void create_landscape_ui(lv_obj_t *scr);
 static void render_landscape_snapshot();
@@ -332,8 +353,17 @@ void create_settings_window();
 void play_click_sound();
 static void stop_click_sound(lv_timer_t *timer);
 static void schedule_weather_refresh_after_click();
+static void apply_display_preferences_async(void *user_data);
+static void schedule_display_preferences_apply(ThemeId theme,
+                                               ScreenRotation rotation,
+                                               bool reopen_settings);
 static void start_touch_calibration();
 static void finish_touch_calibration(bool success);
+static void queue_touch_calibration_start();
+static void queue_touch_calibration_finish(bool success);
+static void create_touch_calibration_overlay();
+static void restore_rotation_after_calibration(bool success);
+static void show_calibration_result(bool success);
 static void calibration_timer_cb(lv_timer_t *timer);
 static void screen_event_cb(lv_event_t *e);
 static void settings_event_handler(lv_event_t *e);
@@ -1619,6 +1649,79 @@ static void apply_msgbox_theme(lv_obj_t *mbox) {
                      palette.panel, palette.text, palette.grid);
 }
 
+static void apply_theme_swatch_theme(lv_obj_t *button, ThemeId theme,
+                                     bool selected) {
+  const ThemePalette &swatch = theme_palette(theme);
+  apply_control_part(button, LV_PART_MAIN | LV_STATE_DEFAULT,
+                     swatch.accent, swatch.background, swatch.grid);
+  apply_control_part(button, LV_PART_MAIN | LV_STATE_CHECKED,
+                     swatch.accent, swatch.background, swatch.text);
+  apply_control_part(button, LV_PART_MAIN | LV_STATE_PRESSED,
+                     swatch.high_temperature, swatch.background, swatch.text);
+  apply_control_part(button,
+                     LV_PART_MAIN | LV_STATE_CHECKED | LV_STATE_PRESSED,
+                     swatch.low_temperature, swatch.background, swatch.text);
+  apply_control_part(button, LV_PART_MAIN | LV_STATE_DISABLED,
+                     swatch.grid, swatch.muted, swatch.grid);
+  lv_obj_set_style_border_color(button, theme_color(swatch.text),
+                                LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_border_width(button, selected ? 2 : 1,
+                                LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_border_width(button, selected ? 2 : 1,
+                                LV_PART_MAIN | LV_STATE_CHECKED);
+  lv_obj_set_style_border_width(
+      button, selected ? 2 : 1,
+      LV_PART_MAIN | LV_STATE_CHECKED | LV_STATE_PRESSED);
+}
+
+static void apply_buttonmatrix_theme(lv_obj_t *buttonmatrix) {
+  const ThemePalette &palette = theme_palette(current_theme);
+  apply_control_part(buttonmatrix, LV_PART_MAIN | LV_STATE_DEFAULT,
+                     palette.background, palette.text, palette.grid);
+  apply_control_part(buttonmatrix, LV_PART_MAIN | LV_STATE_DISABLED,
+                     palette.grid, palette.muted, palette.grid);
+  apply_control_part(buttonmatrix, LV_PART_ITEMS | LV_STATE_DEFAULT,
+                     palette.panel, palette.text, palette.grid);
+  apply_control_part(buttonmatrix, LV_PART_ITEMS | LV_STATE_CHECKED,
+                     palette.accent, palette.background, palette.accent);
+  apply_control_part(buttonmatrix, LV_PART_ITEMS | LV_STATE_PRESSED,
+                     palette.high_temperature, palette.background,
+                     palette.high_temperature);
+  apply_control_part(buttonmatrix,
+                     LV_PART_ITEMS | LV_STATE_CHECKED | LV_STATE_PRESSED,
+                     palette.low_temperature, palette.background,
+                     palette.accent);
+  apply_control_part(buttonmatrix, LV_PART_ITEMS | LV_STATE_DISABLED,
+                     palette.grid, palette.muted, palette.grid);
+}
+
+static void schedule_display_preferences_apply(
+    ThemeId theme, ScreenRotation rotation, bool reopen_settings) {
+  pending_display_preferences.theme = validated_theme(
+      static_cast<uint32_t>(theme));
+  pending_display_preferences.rotation = validated_rotation(
+      static_cast<uint32_t>(rotation));
+  pending_display_preferences.reopen_settings = reopen_settings;
+  if (display_preferences_async_pending) return;
+
+  display_preferences_async_pending = true;
+  if (lv_async_call(apply_display_preferences_async, nullptr) != LV_RESULT_OK) {
+    display_preferences_async_pending = false;
+  }
+}
+
+static void apply_display_preferences_async(void *user_data) {
+  (void)user_data;
+  const PendingDisplayPreferences pending = pending_display_preferences;
+  display_preferences_async_pending = false;
+  current_theme = validated_theme(static_cast<uint32_t>(pending.theme));
+  current_rotation = validated_rotation(static_cast<uint32_t>(pending.rotation));
+  prefs.putUInt("theme", static_cast<uint32_t>(current_theme));
+  prefs.putUInt("screenRotation", static_cast<uint32_t>(current_rotation));
+  lv_display_set_rotation(display, lv_rotation_for(current_rotation));
+  rebuild_ui(pending.reopen_settings);
+}
+
 void wifi_splash_screen() {
   lv_obj_t *scr = lv_scr_act();
   lbl_home_location = nullptr;
@@ -2248,12 +2351,9 @@ static void update_calibration_target() {
   calibration_target = lv_obj_create(calibration_overlay);
   lv_obj_set_size(calibration_target, 24, 24);
   const TouchScreenPoint portrait_target = TOUCH_CALIBRATION_TARGETS[calibration_target_index];
-  int target_x = 0;
-  int target_y = 0;
-  rotate_portrait_touch(current_rotation, portrait_target.x, portrait_target.y, &target_x, &target_y);
   lv_obj_set_pos(calibration_target,
-                 target_x - 12,
-                 target_y - 12);
+                 static_cast<int>(portrait_target.x) - 12,
+                 static_cast<int>(portrait_target.y) - 12);
   lv_obj_set_style_pad_all(calibration_target, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_bg_color(calibration_target, theme_color(palette.high_temperature),
                             LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -2266,12 +2366,44 @@ static void update_calibration_target() {
                         calibration_target_index + 1);
 }
 
+static void start_touch_calibration_async(void *user_data) {
+  (void)user_data;
+  calibration_start_pending = false;
+  start_touch_calibration();
+}
+
+static void queue_touch_calibration_start() {
+  if (calibration_active || calibration_start_pending || !settings_win) return;
+  calibration_start_pending = true;
+  if (lv_async_call(start_touch_calibration_async, nullptr) != LV_RESULT_OK) {
+    calibration_start_pending = false;
+  }
+}
+
+static void finish_touch_calibration_async(void *user_data) {
+  (void)user_data;
+  calibration_finish_pending = false;
+  finish_touch_calibration(calibration_pending_success);
+}
+
+static void queue_touch_calibration_finish(bool success) {
+  if (!calibration_active || calibration_finish_pending) return;
+  calibration_pending_success = success;
+  calibration_finish_pending = true;
+  if (lv_async_call(finish_touch_calibration_async, nullptr) != LV_RESULT_OK) {
+    calibration_finish_pending = false;
+  }
+}
+
 static void calibration_cancel_event_cb(lv_event_t *e) {
+  (void)e;
   play_click_sound();
-  finish_touch_calibration(false);
+  queue_touch_calibration_finish(false);
 }
 
 static void finish_touch_calibration(bool success) {
+  if (!calibration_active) return;
+
   if (success) {
     TouchScreenPoint targets[5];
     for (uint8_t i = 0; i < 5; i++) targets[i] = TOUCH_CALIBRATION_TARGETS[i];
@@ -2292,6 +2424,8 @@ static void finish_touch_calibration(bool success) {
   calibration_active = false;
   calibration_raw_pressed = false;
   calibration_sample_count = 0;
+  calibration_target_index = 0;
+  calibration_state = TOUCH_CALIBRATION_WAIT_PRESS;
 
   if (calibration_overlay) {
     lv_obj_del(calibration_overlay);
@@ -2299,8 +2433,11 @@ static void finish_touch_calibration(bool success) {
     calibration_target = nullptr;
     calibration_progress_label = nullptr;
   }
-  if (settings_win) lv_obj_clear_flag(settings_win, LV_OBJ_FLAG_HIDDEN);
 
+  restore_rotation_after_calibration(success);
+}
+
+static void show_calibration_result(bool success) {
   const LocalizedStrings* strings = get_strings(current_language);
   lv_obj_t *mbox = lv_msgbox_create(lv_scr_act());
   lv_obj_t *title = lv_msgbox_add_title(mbox, strings->touch_calibration);
@@ -2315,10 +2452,18 @@ static void finish_touch_calibration(bool success) {
   apply_button_theme(close, false);
 }
 
+static void restore_rotation_after_calibration(bool success) {
+  current_rotation = calibration_previous_rotation;
+  lv_display_set_rotation(display, lv_rotation_for(current_rotation));
+  rebuild_ui(false);
+  show_calibration_result(success);
+}
+
 static void calibration_timer_cb(lv_timer_t *timer) {
-  if (!calibration_active) return;
+  (void)timer;
+  if (!calibration_active || calibration_finish_pending) return;
   if (millis() - calibration_started_ms >= TOUCH_CALIBRATION_TIMEOUT_MS) {
-    finish_touch_calibration(false);
+    queue_touch_calibration_finish(false);
     return;
   }
 
@@ -2337,7 +2482,7 @@ static void calibration_timer_cb(lv_timer_t *timer) {
   } else if (!calibration_raw_pressed &&
              millis() - calibration_last_touch_ms >= TOUCH_CALIBRATION_RELEASE_MS) {
     if (calibration_target_index == 4) {
-      finish_touch_calibration(true);
+      queue_touch_calibration_finish(true);
     } else {
       calibration_target_index++;
       calibration_state = TOUCH_CALIBRATION_WAIT_PRESS;
@@ -2346,22 +2491,11 @@ static void calibration_timer_cb(lv_timer_t *timer) {
   }
 }
 
-static void start_touch_calibration() {
-  if (calibration_active || !settings_win) return;
-
+static void create_touch_calibration_overlay() {
   const LocalizedStrings* strings = get_strings(current_language);
   const ThemePalette &palette = theme_palette(current_theme);
-  lv_obj_add_flag(settings_win, LV_OBJ_FLAG_HIDDEN);
-  calibration_active = true;
-  calibration_raw_pressed = false;
-  calibration_started_ms = millis();
-  calibration_last_touch_ms = calibration_started_ms;
-  calibration_sample_count = 0;
-  calibration_target_index = 0;
-  calibration_state = TOUCH_CALIBRATION_WAIT_PRESS;
-
   calibration_overlay = lv_obj_create(lv_scr_act());
-  lv_obj_set_size(calibration_overlay, display_width(), display_height());
+  lv_obj_set_size(calibration_overlay, PORTRAIT_WIDTH, PORTRAIT_HEIGHT);
   lv_obj_set_pos(calibration_overlay, 0, 0);
   apply_root_theme(calibration_overlay);
   lv_obj_set_style_pad_all(calibration_overlay, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -2396,6 +2530,46 @@ static void start_touch_calibration() {
 
   update_calibration_target();
   calibration_timer = lv_timer_create(calibration_timer_cb, 20, nullptr);
+}
+
+static void start_touch_calibration() {
+  if (calibration_active || !settings_win) return;
+
+  calibration_previous_rotation = current_rotation;
+  if (kb && lv_obj_is_valid(kb)) {
+    lv_keyboard_set_textarea(kb, nullptr);
+  }
+  kb = nullptr;
+  settings_win = nullptr;
+  location_win = nullptr;
+  lbl_settings_location = nullptr;
+  loc_ta = nullptr;
+  results_dd = nullptr;
+  btn_close_loc = nullptr;
+  btn_close_obj = nullptr;
+  unit_switch = nullptr;
+  clock_24hr_switch = nullptr;
+  night_mode_switch = nullptr;
+  language_dropdown = nullptr;
+  touch_calibration_btn = nullptr;
+  sound_enabled_switch = nullptr;
+  sound_effect_dropdown = nullptr;
+  qweather_config_btn = nullptr;
+  rotation_buttonmatrix = nullptr;
+  for (uint8_t i = 0; i < THEME_COUNT; i++) theme_buttons[i] = nullptr;
+
+  current_rotation = SCREEN_ROTATION_0;
+  lv_display_set_rotation(display, LV_DISPLAY_ROTATION_0);
+  lv_obj_clean(lv_scr_act());
+
+  calibration_active = true;
+  calibration_raw_pressed = false;
+  calibration_started_ms = millis();
+  calibration_last_touch_ms = calibration_started_ms;
+  calibration_sample_count = 0;
+  calibration_target_index = 0;
+  calibration_state = TOUCH_CALIBRATION_WAIT_PRESS;
+  create_touch_calibration_overlay();
 }
 
 void daily_cb(lv_event_t *e) {
@@ -2613,6 +2787,81 @@ void create_settings_window() {
     lv_obj_align(label, LV_ALIGN_LEFT_MID, 0, 0);
   };
 
+  lv_obj_t *display_heading_row = create_row(24);
+  lv_obj_t *display_heading = lv_label_create(display_heading_row);
+  lv_label_set_text(display_heading, strings->display_settings);
+  lv_obj_set_style_text_font(display_heading, get_font_14(),
+                             LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_color(display_heading, theme_color(palette.accent),
+                              LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_align(display_heading, LV_ALIGN_LEFT_MID, 0, 0);
+
+  lv_obj_t *theme_row = create_row(68);
+  lv_obj_set_style_pad_column(theme_row, 3, LV_PART_MAIN);
+  lv_obj_t *theme_label = lv_label_create(theme_row);
+  lv_label_set_text(theme_label, strings->theme);
+  style_label(theme_label);
+  lv_obj_align(theme_label, LV_ALIGN_TOP_LEFT, 0, 0);
+  for (uint8_t i = 0; i < THEME_COUNT; i++) {
+    const ThemeId swatch_theme = static_cast<ThemeId>(i);
+    theme_buttons[i] = lv_btn_create(theme_row);
+    lv_obj_set_size(theme_buttons[i], 38, 42);
+    lv_obj_align(theme_buttons[i], LV_ALIGN_BOTTOM_MID,
+                 (static_cast<int>(i) - 2) * 41, 0);
+    apply_theme_swatch_theme(theme_buttons[i], swatch_theme,
+                             swatch_theme == current_theme);
+    lv_obj_set_style_bg_color(
+        theme_buttons[i],
+        theme_color(theme_palette(static_cast<ThemeId>(i)).accent),
+        LV_PART_MAIN | LV_STATE_DEFAULT);
+    if (swatch_theme == current_theme) {
+      lv_obj_add_state(theme_buttons[i], LV_STATE_CHECKED);
+    }
+    lv_obj_add_event_cb(theme_buttons[i], settings_event_handler,
+                        LV_EVENT_CLICKED, nullptr);
+
+    lv_obj_t *theme_name = lv_label_create(theme_buttons[i]);
+    lv_label_set_text(theme_name, strings->theme_names[i]);
+    lv_obj_set_width(theme_name, 34);
+    lv_label_set_long_mode(theme_name, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_align(theme_name, LV_TEXT_ALIGN_CENTER,
+                                LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(theme_name, get_font_12(),
+                               LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_center(theme_name);
+  }
+
+  lv_obj_t *rotation_row = create_row(68);
+  lv_obj_t *rotation_label = lv_label_create(rotation_row);
+  lv_label_set_text(rotation_label, strings->screen_orientation);
+  style_label(rotation_label);
+  lv_obj_align(rotation_label, LV_ALIGN_TOP_LEFT, 0, 0);
+  rotation_buttonmatrix = lv_buttonmatrix_create(rotation_row);
+  lv_buttonmatrix_set_map(rotation_buttonmatrix, rotation_map);
+  lv_buttonmatrix_set_one_checked(rotation_buttonmatrix, true);
+  lv_buttonmatrix_set_button_ctrl_all(rotation_buttonmatrix,
+                                      LV_BUTTONMATRIX_CTRL_CHECKABLE);
+  lv_buttonmatrix_set_button_ctrl(
+      rotation_buttonmatrix, static_cast<uint32_t>(current_rotation),
+      LV_BUTTONMATRIX_CTRL_CHECKED);
+  lv_obj_set_size(rotation_buttonmatrix, LV_PCT(100), 40);
+  lv_obj_align(rotation_buttonmatrix, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_obj_set_style_text_font(rotation_buttonmatrix, get_font_12(),
+                             LV_PART_ITEMS | LV_STATE_DEFAULT);
+  apply_buttonmatrix_theme(rotation_buttonmatrix);
+  lv_obj_add_event_cb(rotation_buttonmatrix, settings_event_handler,
+                      LV_EVENT_VALUE_CHANGED, nullptr);
+
+  lv_obj_t *touch_rotation_row = create_row(34);
+  lv_obj_t *touch_rotation_label = lv_label_create(touch_rotation_row);
+  lv_label_set_text(touch_rotation_label, strings->touch_rotation);
+  style_label(touch_rotation_label);
+  lv_obj_t *touch_rotation_switch = lv_switch_create(touch_rotation_row);
+  apply_switch_theme(touch_rotation_switch);
+  lv_obj_add_state(touch_rotation_switch, LV_STATE_CHECKED);
+  lv_obj_add_state(touch_rotation_switch, LV_STATE_DISABLED);
+  lv_obj_align(touch_rotation_switch, LV_ALIGN_RIGHT_MID, 0, 0);
+
   // Brightness
   lv_obj_t *brightness_row = create_row(38);
   lv_obj_t *lbl_b = lv_label_create(brightness_row);
@@ -2795,8 +3044,32 @@ static void settings_event_handler(lv_event_t *e) {
   lv_event_code_t code = lv_event_get_code(e);
   lv_obj_t *tgt = (lv_obj_t *)lv_event_get_target(e);
 
+  for (uint8_t i = 0; i < THEME_COUNT; i++) {
+    if (tgt == theme_buttons[i] && code == LV_EVENT_CLICKED) {
+      const ScreenRotation next_rotation = display_preferences_async_pending
+          ? pending_display_preferences.rotation
+          : current_rotation;
+      schedule_display_preferences_apply(static_cast<ThemeId>(i),
+                                         next_rotation, true);
+      return;
+    }
+  }
+
+  if (tgt == rotation_buttonmatrix && code == LV_EVENT_VALUE_CHANGED) {
+    const uint32_t selected =
+        lv_buttonmatrix_get_selected_button(rotation_buttonmatrix);
+    if (selected < SCREEN_ROTATION_COUNT) {
+      const ThemeId next_theme = display_preferences_async_pending
+          ? pending_display_preferences.theme
+          : current_theme;
+      schedule_display_preferences_apply(
+          next_theme, static_cast<ScreenRotation>(selected), true);
+    }
+    return;
+  }
+
   if (tgt == touch_calibration_btn && code == LV_EVENT_CLICKED) {
-    start_touch_calibration();
+    queue_touch_calibration_start();
     return;
   }
 
