@@ -93,19 +93,57 @@ class DisplayRotationContractTests(unittest.TestCase):
         self.assertIn("portrait_y = calibrated_y;", touch)
         self.assertIn("portrait_x = constrain(portrait_x, 0, PORTRAIT_WIDTH - 1);", touch)
         self.assertIn("portrait_y = constrain(portrait_y, 0, PORTRAIT_HEIGHT - 1);", touch)
-        self.assertIn("x = portrait_x;", touch)
-        self.assertIn("y = portrait_y;", touch)
+        self.assertIn(
+            "prepare_touch_for_lvgl(current_rotation, portrait_x, portrait_y, &x, &y)",
+            touch,
+        )
         self.assertNotIn("rotate_portrait_touch", touch)
 
+    def test_rotation_discards_the_press_that_triggered_the_direction_change(self):
+        self.assertIn(
+            "static bool touch_release_required_after_rotation = false;",
+            WEATHER,
+        )
+
+        rotation = function_body("static void apply_display_rotation")
+        self.assertIn("lv_indev_reset(touch_indev, nullptr);", rotation)
+        self.assertIn("touch_release_required_after_rotation = true;", rotation)
+        self.assertIn(
+            "lv_display_set_rotation(display, lv_rotation_for(rotation));",
+            rotation,
+        )
+        self.assertLess(
+            rotation.index("lv_indev_reset(touch_indev, nullptr);"),
+            rotation.index("lv_display_set_rotation"),
+        )
+
+        touch = function_body("void touchscreen_read")
+        self.assertIn(
+            "if (touch_release_required_after_rotation)",
+            touch,
+        )
+        self.assertIn("touch_release_required_after_rotation = false;", touch)
+        self.assertIn("data->state = LV_INDEV_STATE_RELEASED;", touch)
+
+    def test_all_runtime_rotation_changes_use_the_safe_transition_helper(self):
+        apply_preferences = function_body("static void apply_display_preferences_async")
+        restore_calibration = function_body("static void restore_rotation_after_calibration")
+        start_calibration = function_body("static void start_touch_calibration() {")
+        self.assertIn("apply_display_rotation(current_rotation);", apply_preferences)
+        self.assertIn("apply_display_rotation(current_rotation);", restore_calibration)
+        self.assertIn("apply_display_rotation(SCREEN_ROTATION_0);", start_calibration)
+        for body in (apply_preferences, restore_calibration, start_calibration):
+            self.assertNotIn("lv_display_set_rotation", body)
+
     def test_calibration_temporarily_uses_portrait_dimensions_and_targets(self):
-        calibration_start = function_body("static void start_touch_calibration()")
+        calibration_start = function_body("static void start_touch_calibration() {")
         self.assertIn(
             "calibration_previous_rotation = current_rotation;",
             calibration_start,
         )
         self.assertIn("current_rotation = SCREEN_ROTATION_0;", calibration_start)
         self.assertIn(
-            "lv_display_set_rotation(display, LV_DISPLAY_ROTATION_0);",
+            "apply_display_rotation(SCREEN_ROTATION_0);",
             calibration_start,
         )
 

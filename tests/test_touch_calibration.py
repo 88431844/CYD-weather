@@ -76,7 +76,7 @@ class TouchCalibrationContractTests(unittest.TestCase):
         ]
         self.assertIn("calibration_previous_rotation = current_rotation;", start)
         self.assertIn("current_rotation = SCREEN_ROTATION_0;", start)
-        self.assertIn("lv_display_set_rotation(display, LV_DISPLAY_ROTATION_0);", start)
+        self.assertIn("apply_display_rotation(SCREEN_ROTATION_0);", start)
         self.assertNotIn('prefs.putUInt("screenRotation"', start)
         self.assertIn("create_touch_calibration_overlay();", start)
 
@@ -85,7 +85,7 @@ class TouchCalibrationContractTests(unittest.TestCase):
             WEATHER.index("static void calibration_timer_cb", WEATHER.index("static void restore_rotation_after_calibration(bool success) {"))
         ]
         self.assertIn("current_rotation = calibration_previous_rotation;", restore)
-        self.assertIn("lv_display_set_rotation(display, lv_rotation_for(current_rotation));", restore)
+        self.assertIn("apply_display_rotation(current_rotation);", restore)
         self.assertLess(restore.index("rebuild_ui(false);"), restore.index("show_calibration_result(success);"))
 
     def test_calibration_start_clears_old_ui_pointers_before_cleaning_screen(self):

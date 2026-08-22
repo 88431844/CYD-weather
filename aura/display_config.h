@@ -114,6 +114,31 @@ static inline bool rotate_portrait_touch(
   return true;
 }
 
+static inline bool prepare_touch_for_lvgl(
+    ScreenRotation rotation,
+    int portrait_x,
+    int portrait_y,
+    int *lvgl_x,
+    int *lvgl_y) {
+  if (!lvgl_x || !lvgl_y || portrait_x < 0 || portrait_x >= PORTRAIT_WIDTH ||
+      portrait_y < 0 || portrait_y >= PORTRAIT_HEIGHT) {
+    return false;
+  }
+
+  // This CYD panel's landscape TFT directions are opposite LVGL's pointer frame.
+  const ScreenRotation validated =
+      validated_rotation(static_cast<uint32_t>(rotation));
+  if (validated == SCREEN_ROTATION_90 ||
+      validated == SCREEN_ROTATION_270) {
+    *lvgl_x = PORTRAIT_WIDTH - 1 - portrait_x;
+    *lvgl_y = PORTRAIT_HEIGHT - 1 - portrait_y;
+  } else {
+    *lvgl_x = portrait_x;
+    *lvgl_y = portrait_y;
+  }
+  return true;
+}
+
 static constexpr ThemePalette THEME_PALETTES[THEME_COUNT] = {
     {0x101820u, 0x1B2932u, 0xF8FBFCu, 0x8FA5AFu, 0x30434Du, 0xFFD25Fu,
      0x63C6FFu, 0x73E1D5u},

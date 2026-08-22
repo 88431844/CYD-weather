@@ -54,6 +54,18 @@ class ClickSoundTests(unittest.TestCase):
             body = match.group(1)
             self.assertIn("play_click_sound();", body, callback)
 
+    def test_settings_open_finishes_heavy_ui_creation_before_click_tone(self):
+        match = re.search(
+            r"void\s+screen_event_cb\s*\(lv_event_t \*e\)\s*\{([\s\S]*?)\n\}",
+            WEATHER,
+        )
+        self.assertIsNotNone(match)
+        body = match.group(1)
+        self.assertLess(
+            body.index("create_settings_window();"),
+            body.index("play_click_sound();"),
+        )
+
     def test_settings_close_persists_and_returns_without_network_refresh(self):
         handler = WEATHER[
             WEATHER.index("static void settings_event_handler(lv_event_t *e) {") :

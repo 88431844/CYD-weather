@@ -128,7 +128,7 @@ class SettingsLayoutAndSoundTests(unittest.TestCase):
         self.assertIn("current_rotation = validated_rotation", apply)
         self.assertIn('prefs.putUInt("theme"', apply)
         self.assertIn('prefs.putUInt("screenRotation"', apply)
-        self.assertIn("lv_display_set_rotation(display, lv_rotation_for(current_rotation));", apply)
+        self.assertIn("apply_display_rotation(current_rotation);", apply)
         self.assertEqual(apply.count("rebuild_ui(pending.reopen_settings);"), 1)
         self.assertNotIn("fetch_and_update_weather", apply)
 

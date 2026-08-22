@@ -110,6 +110,7 @@ static lv_display_t *display = nullptr;
 static lv_indev_t *touch_indev = nullptr;
 static ScreenRotation current_rotation = SCREEN_ROTATION_0;
 static ThemeId current_theme = THEME_DEEP_SEA;
+static bool touch_release_required_after_rotation = false;
 
 // Preferences
 static Preferences prefs;
@@ -353,6 +354,7 @@ void create_settings_window();
 void play_click_sound();
 static void stop_click_sound(lv_timer_t *timer);
 static void apply_display_preferences_async(void *user_data);
+static void apply_display_rotation(ScreenRotation rotation);
 static bool schedule_display_preferences_apply(ThemeId theme,
                                                ScreenRotation rotation,
                                                bool reopen_settings);
@@ -990,6 +992,14 @@ static lv_display_rotation_t lv_rotation_for(ScreenRotation rotation) {
   }
 }
 
+static void apply_display_rotation(ScreenRotation rotation) {
+  if (touch_indev) {
+    lv_indev_reset(touch_indev, nullptr);
+    touch_release_required_after_rotation = true;
+  }
+  lv_display_set_rotation(display, lv_rotation_for(rotation));
+}
+
 static int display_width() {
   return geometry_for_rotation(current_rotation).width;
 }
@@ -999,7 +1009,15 @@ static int display_height() {
 }
 
 void touchscreen_read(lv_indev_t *indev, lv_indev_data_t *data) {
-  if (touchscreen.tirqTouched() && touchscreen.touched()) {
+  const bool touched = touchscreen.tirqTouched() && touchscreen.touched();
+  if (touch_release_required_after_rotation) {
+    if (!touched) touch_release_required_after_rotation = false;
+    if (calibration_active) calibration_raw_pressed = false;
+    data->state = LV_INDEV_STATE_RELEASED;
+    return;
+  }
+
+  if (touched) {
     TS_Point p = touchscreen.getPoint();
 
     int portrait_x = map(p.x, 200, 3700, 1, PORTRAIT_WIDTH);
@@ -1029,8 +1047,10 @@ void touchscreen_read(lv_indev_t *indev, lv_indev_data_t *data) {
 
     portrait_x = constrain(portrait_x, 0, PORTRAIT_WIDTH - 1);
     portrait_y = constrain(portrait_y, 0, PORTRAIT_HEIGHT - 1);
-    x = portrait_x;
-    y = portrait_y;
+    if (!prepare_touch_for_lvgl(current_rotation, portrait_x, portrait_y, &x, &y)) {
+      data->state = LV_INDEV_STATE_RELEASED;
+      return;
+    }
 
     // Handle touch during dimmed screen
     if (!calibration_active && night_mode_active) {
@@ -1812,7 +1832,7 @@ static void apply_display_preferences_async(void *user_data) {
   current_rotation = validated_rotation(static_cast<uint32_t>(pending.rotation));
   prefs.putUInt("theme", static_cast<uint32_t>(current_theme));
   prefs.putUInt("screenRotation", static_cast<uint32_t>(current_rotation));
-  lv_display_set_rotation(display, lv_rotation_for(current_rotation));
+  apply_display_rotation(current_rotation);
   rebuild_ui(pending.reopen_settings);
 }
 
@@ -2430,8 +2450,8 @@ static void location_cancel_event_cb(lv_event_t *e) {
 }
 
 void screen_event_cb(lv_event_t *e) {
-  play_click_sound();
   create_settings_window();
+  play_click_sound();
 }
 
 static void update_calibration_target() {
@@ -2571,7 +2591,7 @@ static void show_calibration_result(bool success) {
 
 static void restore_rotation_after_calibration(bool success) {
   current_rotation = calibration_previous_rotation;
-  lv_display_set_rotation(display, lv_rotation_for(current_rotation));
+  apply_display_rotation(current_rotation);
   rebuild_ui(false);
   show_calibration_result(success);
 }
@@ -2661,7 +2681,7 @@ static void start_touch_calibration() {
   clear_screen_object_references();
 
   current_rotation = SCREEN_ROTATION_0;
-  lv_display_set_rotation(display, LV_DISPLAY_ROTATION_0);
+  apply_display_rotation(SCREEN_ROTATION_0);
   lv_obj_clean(lv_scr_act());
 
   calibration_active = true;

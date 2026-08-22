@@ -133,6 +133,31 @@ int main() {{
 ''')
         self.assertEqual(result.returncode, 0)
 
+    def test_landscape_touch_precompensation_cancels_the_hardware_axis_inversion(self):
+        result = self.run_cpp(r'''
+  const int points[][2] = {{0, 0}, {239, 319}, {120, 160}};
+  const int expected[][2] = {{239, 319}, {0, 0}, {119, 159}};
+  const ScreenRotation landscape_rotations[] = {
+      SCREEN_ROTATION_90, SCREEN_ROTATION_270};
+  for (int rotation = 0; rotation < 2; rotation++) {
+    for (int point = 0; point < 3; point++) {
+      int x = -1;
+      int y = -1;
+      if (!prepare_touch_for_lvgl(landscape_rotations[rotation],
+                                  points[point][0], points[point][1],
+                                  &x, &y)) return 1;
+      if (x != expected[point][0] || y != expected[point][1]) return 2;
+    }
+  }
+
+  int x = -1;
+  int y = -1;
+  if (!prepare_touch_for_lvgl(SCREEN_ROTATION_0, 20, 30, &x, &y)) return 3;
+  if (x != 20 || y != 30) return 4;
+  return 0;
+''')
+        self.assertEqual(result.returncode, 0)
+
     def test_all_theme_palettes_match_approved_color_tokens(self):
         result = self.run_cpp(r'''
   const ThemePalette expected[] = {
