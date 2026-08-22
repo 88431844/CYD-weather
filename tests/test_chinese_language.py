@@ -32,6 +32,10 @@ class ChineseLanguageSupportTests(unittest.TestCase):
         )
         self.assertIn("static const LocalizedStrings strings_zh", TRANSLATIONS)
         self.assertIn('"体感温度"', TRANSLATIONS)
+        self.assertIn('"Sunrise"', TRANSLATIONS)
+        self.assertIn('"Sunset"', TRANSLATIONS)
+        self.assertIn('"日出"', TRANSLATIONS)
+        self.assertIn('"日落"', TRANSLATIONS)
         self.assertIn('"七日天气预报"', TRANSLATIONS)
         self.assertIn(
             'lv_dropdown_set_options(language_dropdown, "English\\n简体中文")',

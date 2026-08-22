@@ -264,6 +264,8 @@ static lv_obj_t *landscape_hourly_icons[FORECAST_POINT_COUNT];
 static lv_obj_t *landscape_hourly_conditions[FORECAST_POINT_COUNT];
 static lv_obj_t *hourly_temperature_labels[FORECAST_POINT_COUNT];
 static lv_obj_t *landscape_current_condition;
+static lv_obj_t *landscape_sunrise;
+static lv_obj_t *landscape_sunset;
 static lv_obj_t *landscape_daily_button;
 static lv_obj_t *landscape_hourly_button;
 
@@ -679,28 +681,24 @@ static void render_landscape_snapshot() {
   if (current.valid) {
     const float current_temperature =
         temperature_for_display(current.temperature);
-    const float current_feels_like =
-        temperature_for_display(current.feels_like);
     lv_label_set_text_fmt(
         lbl_today_temp, "%.0f°", current_temperature);
     lv_label_set_text(
         landscape_current_condition,
         weather_condition_name(current.weather_code));
-    if (current.has_humidity) {
-      lv_label_set_text_fmt(
-          lbl_today_feels_like, "%s %.0f°%c · %s %.0f%%",
-          strings->feels_like_temp, current_feels_like, unit,
-          strings->humidity, current.humidity);
-    } else {
-      lv_label_set_text_fmt(
-          lbl_today_feels_like, "%s %.0f°%c",
-          strings->feels_like_temp, current_feels_like, unit);
-    }
   } else {
     lv_label_set_text(lbl_today_temp, "--°");
     lv_label_set_text(landscape_current_condition, "--");
-    lv_label_set_text(lbl_today_feels_like, strings->feels_like_temp);
   }
+
+  const char *sunrise = weather_snapshot.solar.has_sunrise
+      ? weather_snapshot.solar.sunrise : "--:--";
+  const char *sunset = weather_snapshot.solar.has_sunset
+      ? weather_snapshot.solar.sunset : "--:--";
+  lv_label_set_text_fmt(
+      landscape_sunrise, "%s %s", strings->sunrise, sunrise);
+  lv_label_set_text_fmt(
+      landscape_sunset, "%s %s", strings->sunset, sunset);
 
   prepare_landscape_chart_points();
 
@@ -1139,6 +1137,8 @@ static void clear_screen_object_references() {
   daily_low_series = nullptr;
   hourly_temperature_series = nullptr;
   landscape_current_condition = nullptr;
+  landscape_sunrise = nullptr;
+  landscape_sunset = nullptr;
   landscape_daily_button = nullptr;
   landscape_hourly_button = nullptr;
 
@@ -2101,9 +2101,31 @@ static void create_landscape_header(lv_obj_t *scr) {
   const ThemePalette &palette = theme_palette(current_theme);
   const LocalizedStrings *strings = get_strings(current_language);
 
+  landscape_sunrise = lv_label_create(scr);
+  lv_obj_set_size(landscape_sunrise, 94, 13);
+  lv_obj_set_pos(landscape_sunrise, 6, 44);
+  lv_label_set_long_mode(landscape_sunrise, LV_LABEL_LONG_DOT);
+  lv_label_set_text_fmt(landscape_sunrise, "%s --:--", strings->sunrise);
+  lv_obj_set_style_text_font(
+      landscape_sunrise, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_color(
+      landscape_sunrise, theme_color(palette.muted),
+      LV_PART_MAIN | LV_STATE_DEFAULT);
+
+  landscape_sunset = lv_label_create(scr);
+  lv_obj_set_size(landscape_sunset, 88, 13);
+  lv_obj_set_pos(landscape_sunset, 104, 44);
+  lv_label_set_long_mode(landscape_sunset, LV_LABEL_LONG_DOT);
+  lv_label_set_text_fmt(landscape_sunset, "%s --:--", strings->sunset);
+  lv_obj_set_style_text_font(
+      landscape_sunset, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_color(
+      landscape_sunset, theme_color(palette.muted),
+      LV_PART_MAIN | LV_STATE_DEFAULT);
+
   lbl_update_status = lv_label_create(scr);
-  lv_obj_set_size(lbl_update_status, 100, 13);
-  lv_obj_set_pos(lbl_update_status, 6, 44);
+  lv_obj_set_size(lbl_update_status, 118, 13);
+  lv_obj_set_pos(lbl_update_status, 196, 44);
   lv_label_set_long_mode(lbl_update_status, LV_LABEL_LONG_DOT);
   lv_obj_set_style_text_font(
       lbl_update_status, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -2131,17 +2153,6 @@ static void create_landscape_header(lv_obj_t *scr) {
       LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_text_color(
       landscape_current_condition, theme_color(palette.accent),
-      LV_PART_MAIN | LV_STATE_DEFAULT);
-
-  lbl_today_feels_like = lv_label_create(scr);
-  lv_obj_set_size(lbl_today_feels_like, 230, 15);
-  lv_obj_set_pos(lbl_today_feels_like, 84, 29);
-  lv_label_set_long_mode(lbl_today_feels_like, LV_LABEL_LONG_DOT);
-  lv_label_set_text(lbl_today_feels_like, strings->feels_like_temp);
-  lv_obj_set_style_text_font(
-      lbl_today_feels_like, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_text_color(
-      lbl_today_feels_like, theme_color(palette.muted),
       LV_PART_MAIN | LV_STATE_DEFAULT);
 
   lbl_clock = lv_label_create(scr);

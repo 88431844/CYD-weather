@@ -110,9 +110,16 @@ class LandscapeWeatherUiTests(unittest.TestCase):
         )
         self.assertNotIn("lbl_home_location = lv_label_create(scr);", header)
         self.assertNotIn("lbl_network_status = lv_label_create(scr);", header)
+        self.assertNotIn("lbl_today_feels_like = lv_label_create(scr);", header)
+        self.assertIn("landscape_sunrise = lv_label_create(scr);", header)
+        self.assertIn("lv_obj_set_size(landscape_sunrise, 94, 13);", header)
+        self.assertIn("lv_obj_set_pos(landscape_sunrise, 6, 44);", header)
+        self.assertIn("landscape_sunset = lv_label_create(scr);", header)
+        self.assertIn("lv_obj_set_size(landscape_sunset, 88, 13);", header)
+        self.assertIn("lv_obj_set_pos(landscape_sunset, 104, 44);", header)
         self.assertIn("lbl_update_status = lv_label_create(scr);", header)
-        self.assertIn("lv_obj_set_size(lbl_update_status, 100, 13);", header)
-        self.assertIn("lv_obj_set_pos(lbl_update_status, 6, 44);", header)
+        self.assertIn("lv_obj_set_size(lbl_update_status, 118, 13);", header)
+        self.assertIn("lv_obj_set_pos(lbl_update_status, 196, 44);", header)
         self.assertIn("lv_obj_set_size(lbl_today_temp, 76, 46);", header)
         self.assertIn("lv_obj_set_pos(lbl_today_temp, 6, 0);", header)
         self.assertIn('lv_label_set_text(lbl_today_temp, "--°");', header)
@@ -124,8 +131,6 @@ class LandscapeWeatherUiTests(unittest.TestCase):
             "lv_obj_set_pos(landscape_current_condition, 84, 4);", header
         )
         self.assertIn("landscape_current_condition, get_font_20()", header)
-        self.assertIn("lv_obj_set_size(lbl_today_feels_like, 230, 15);", header)
-        self.assertIn("lv_obj_set_pos(lbl_today_feels_like, 84, 29);", header)
 
     def test_landscape_update_status_omits_provider_and_ip(self):
         update = function_body(
@@ -166,23 +171,20 @@ class LandscapeWeatherUiTests(unittest.TestCase):
         self.assertIn("lv_obj_set_pos(landscape_hourly_button, 236, 2);", segmented)
         self.assertIn("lv_obj_set_pos(settings_button, 284, 2);", segmented)
 
-    def test_landscape_summary_localizes_optional_humidity(self):
+    def test_landscape_summary_renders_localized_solar_placeholders(self):
         renderer = function_body(
             "static void render_landscape_snapshot() {",
             "static void set_object_hidden(",
         )
         self.assertIn('lbl_today_temp, "%.0f°", current_temperature', renderer)
         self.assertIn('lv_label_set_text(lbl_today_temp, "--°");', renderer)
-        self.assertIn("current.has_humidity", renderer)
-        self.assertIn("current.humidity", renderer)
-        self.assertIn("strings->humidity", renderer)
-        self.assertIn('"%s %.0f°%c · %s %.0f%%"', renderer)
-        missing_branch = renderer[renderer.index("if (current.has_humidity)") :]
-        self.assertRegex(
-            missing_branch,
-            r'else\s*\{\s*lv_label_set_text_fmt\(\s*'
-            r'lbl_today_feels_like, "%s %.0f°%c",',
-        )
+        self.assertNotIn("lbl_today_feels_like", renderer)
+        self.assertNotIn("strings->humidity", renderer)
+        self.assertIn("strings->sunrise", renderer)
+        self.assertIn("strings->sunset", renderer)
+        self.assertIn("weather_snapshot.solar.has_sunrise", renderer)
+        self.assertIn("weather_snapshot.solar.has_sunset", renderer)
+        self.assertGreaterEqual(renderer.count('"--:--"'), 2)
 
     def test_each_forecast_column_has_temperature_icon_condition_and_fixed_size(self):
         for symbol in (

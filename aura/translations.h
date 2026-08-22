@@ -59,6 +59,8 @@ struct LocalizedStrings {
   const char* device_ip;
   const char* weather_source;
   const char* weather_updated;
+  const char* sunrise;
+  const char* sunset;
   const char* qweather_name;
   const char* open_meteo_name;
   const char* display_settings;
@@ -104,7 +106,7 @@ static const LocalizedStrings strings_en = {
   "Touch calibration failed; previous settings kept.",
   "Sound:", "Effect:", "Classic\nSoft\nDouble\nLow", "Weather provider:", "Configure QWeather",
   "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1.",
-  "IP:", "Source:", "Updated:", "QWeather", "Open-Meteo",
+  "IP:", "Source:", "Updated:", "Sunrise", "Sunset", "QWeather", "Open-Meteo",
   "Display", "Theme", "Orientation", "Correct touch",
   {"Deep Sea", "Clear Sky", "Rainforest", "Sunset", "High Contrast"},
   {"Clear", "Partly cloudy", "Cloudy", "Fog", "Drizzle", "Light rain", "Heavy rain", "Sleet", "Snow", "Thunderstorm"}
@@ -139,7 +141,7 @@ static const LocalizedStrings strings_zh = {
   "重调，设置",
   "声音:", "效果:", "经典\n柔和\n双音\n低沉", "天气源:", "和风天气API Key配置",
   "正在配置天气 API Key。\n请连接 Aura 热点，访问 192.168.4.1 完成配置。",
-  "IP:", "天气源:", "更新时间:", "和风天气", "Open-Meteo",
+  "IP:", "天气源:", "更新时间:", "日出", "日落", "和风天气", "Open-Meteo",
   "显示设置", "主题", "屏幕方向", "自动校正触摸",
   {"深海", "晴空", "雨林", "晚霞", "高对比"},
   {"晴", "多云", "阴", "雾", "毛毛雨", "小雨", "大雨", "雨夹雪", "雪", "雷雨"}
