@@ -1,6 +1,8 @@
 #ifndef TRANSLATIONS_H
 #define TRANSLATIONS_H
 
+#include "display_config.h"
+
 // Language support
 enum Language { LANG_EN = 0, LANG_ES = 1, LANG_DE = 2, LANG_FR = 3, LANG_TR = 4, LANG_SV = 5, LANG_IT = 6, LANG_ZH = 7 };
 
@@ -51,6 +53,12 @@ struct LocalizedStrings {
   const char* weather_updated;
   const char* qweather_name;
   const char* open_meteo_name;
+  const char* display_settings;
+  const char* theme;
+  const char* screen_orientation;
+  const char* touch_rotation;
+  const char* theme_names[THEME_COUNT];
+  const char* weather_conditions[10];
 };
 
 #define DEFAULT_CAPTIVE_SSID "Aura"
@@ -87,7 +95,10 @@ static const LocalizedStrings strings_en = {
   "Touch calibration failed; previous settings kept.",
   "Sound:", "Effect:", "Classic\nSoft\nDouble\nLow", "Configure QWeather",
   "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1.",
-  "IP:", "Source:", "Updated:", "QWeather", "Open-Meteo"
+  "IP:", "Source:", "Updated:", "QWeather", "Open-Meteo",
+  "Display", "Theme", "Orientation", "Correct touch",
+  {"Deep Sea", "Clear Sky", "Rainforest", "Sunset", "High Contrast"},
+  {"Clear", "Partly cloudy", "Cloudy", "Fog", "Drizzle", "Light rain", "Heavy rain", "Sleet", "Snow", "Thunderstorm"}
 };
 
 static const LocalizedStrings strings_es = {
@@ -124,7 +135,10 @@ static const LocalizedStrings strings_es = {
   "Calibración fallida; se conservaron los ajustes anteriores.",
   "Sonido:", "Efecto:", "Classic\nSoft\nDouble\nLow", "Configurar QWeather",
   "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1.",
-  "IP:", "Source:", "Updated:", "QWeather", "Open-Meteo"
+  "IP:", "Source:", "Updated:", "QWeather", "Open-Meteo",
+  "Pantalla", "Tema", "Orientación", "Corregir toque",
+  {"Mar profundo", "Cielo claro", "Selva", "Atardecer", "Alto contraste"},
+  {"Despejado", "Parcialmente nublado", "Nublado", "Niebla", "Llovizna", "Lluvia ligera", "Lluvia fuerte", "Aguanieve", "Nieve", "Tormenta"}
 };
 
 static const LocalizedStrings strings_de = {
@@ -163,7 +177,10 @@ static const LocalizedStrings strings_de = {
   "Kalibrierung fehlgeschlagen; alte Einstellungen behalten.",
   "Ton:", "Effekt:", "Classic\nSoft\nDouble\nLow", "QWeather konfigurieren",
   "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1.",
-  "IP:", "Quelle:", "Aktualisiert:", "QWeather", "Open-Meteo"
+  "IP:", "Quelle:", "Aktualisiert:", "QWeather", "Open-Meteo",
+  "Anzeige", "Thema", "Ausrichtung", "Touch korrigieren",
+  {"Tiefsee", "Klarer Himmel", "Regenwald", "Abendrot", "Hoher Kontrast"},
+  {"Klar", "Teilweise bewölkt", "Bewölkt", "Nebel", "Nieselregen", "Leichter Regen", "Starkregen", "Schneeregen", "Schnee", "Gewitter"}
 };
 
 static const LocalizedStrings strings_fr = {
@@ -202,7 +219,10 @@ static const LocalizedStrings strings_fr = {
   "Échec de la calibration; anciens réglages conservés.",
   "Son:", "Effet:", "Classic\nSoft\nDouble\nLow", "Configurer QWeather",
   "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1.",
-  "IP:", "Source :", "Mis à jour :", "QWeather", "Open-Meteo"
+  "IP:", "Source :", "Mis à jour :", "QWeather", "Open-Meteo",
+  "Affichage", "Thème", "Orientation", "Corriger le tactile",
+  {"Haute mer", "Ciel clair", "Forêt", "Crépuscule", "Contraste élevé"},
+  {"Dégagé", "Peu nuageux", "Nuageux", "Brouillard", "Bruine", "Pluie faible", "Forte pluie", "Grésil", "Neige", "Orage"}
 };
 
 static const LocalizedStrings strings_tr = {
@@ -238,7 +258,10 @@ static const LocalizedStrings strings_tr = {
   "Kalibrasyon başarısız; önceki ayarlar korundu.",
   "Ses:", "Efekt:", "Classic\nSoft\nDouble\nLow", "QWeather yapılandır",
   "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1.",
-  "IP:", "Kaynak:", "Güncellendi:", "QWeather", "Open-Meteo"
+  "IP:", "Kaynak:", "Güncellendi:", "QWeather", "Open-Meteo",
+  "Ekran", "Tema", "Yön", "Dokunmayı düzelt",
+  {"Derin deniz", "Açık gökyüzü", "Yağmur ormanı", "Gün batımı", "Yüksek kontrast"},
+  {"Açık", "Parçalı bulutlu", "Bulutlu", "Sis", "Çiseleme", "Hafif yağmur", "Şiddetli yağmur", "Sulu kar", "Kar", "Fırtına"}
 };
 
 static const LocalizedStrings strings_sv = {
@@ -278,7 +301,10 @@ static const LocalizedStrings strings_sv = {
   "Kalibrering misslyckades; tidigare inställningar behölls.",
   "Ljud:", "Effekt:", "Classic\nSoft\nDouble\nLow", "Konfigurera QWeather",
   "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1.",
-  "IP:", "Källa:", "Uppdaterad:", "QWeather", "Open-Meteo"
+  "IP:", "Källa:", "Uppdaterad:", "QWeather", "Open-Meteo",
+  "Skärm", "Tema", "Riktning", "Korrigera touch",
+  {"Djuphav", "Klar himmel", "Regnskog", "Solnedgång", "Hög kontrast"},
+  {"Klart", "Delvis molnigt", "Molnigt", "Dimma", "Duggregn", "Lätt regn", "Kraftigt regn", "Snöblandat", "Snö", "Åska"}
 };
 
 static const LocalizedStrings strings_it = {
@@ -313,7 +339,10 @@ static const LocalizedStrings strings_it = {
   "Calibrazione fallita; impostazioni precedenti mantenute.",
   "Suono:", "Effetto:", "Classic\nSoft\nDouble\nLow", "Configura QWeather",
   "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1.",
-  "IP:", "Fonte:", "Aggiornato:", "QWeather", "Open-Meteo"
+  "IP:", "Fonte:", "Aggiornato:", "QWeather", "Open-Meteo",
+  "Schermo", "Tema", "Orientamento", "Correggi tocco",
+  {"Mare profondo", "Cielo sereno", "Foresta", "Tramonto", "Alto contrasto"},
+  {"Sereno", "Parzialmente nuvoloso", "Nuvoloso", "Nebbia", "Pioviggine", "Pioggia leggera", "Pioggia forte", "Nevischio", "Neve", "Temporale"}
 };
 
 static const LocalizedStrings strings_zh = {
@@ -344,7 +373,10 @@ static const LocalizedStrings strings_zh = {
   "重调，设置",
   "Sound:", "效果:", "Classic\nSoft\nDouble\nLow", "和风天气API Key配置",
   "正在配置天气 API Key。\n请连接 Aura 热点，访问 192.168.4.1 完成配置。",
-  "IP:", "天气源:", "更新时间:", "和风天气", "Open-Meteo"
+  "IP:", "天气源:", "更新时间:", "和风天气", "Open-Meteo",
+  "显示设置", "主题", "屏幕方向", "自动校正触摸",
+  {"深海", "晴空", "雨林", "晚霞", "高对比"},
+  {"晴", "多云", "阴", "雾", "毛毛雨", "小雨", "大雨", "雨夹雪", "雪", "雷雨"}
 };
 
 static const LocalizedStrings* get_strings(Language current_language) {
