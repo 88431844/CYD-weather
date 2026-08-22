@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+font_url="https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf"
+font_sha256="2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b"
+
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_dir="$(cd "${script_dir}/.." && pwd)"
 font_dir="$(mktemp -d /tmp/aura-font.XXXXXX)"
@@ -12,10 +15,15 @@ cleanup() {
 trap cleanup EXIT
 
 curl -L --fail --silent --show-error \
-  "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf" \
+  "${font_url}" \
   -o "${font_path}"
+printf '%s  %s\n' "${font_sha256}" "${font_path}" | shasum -a 256 -c -
 
 symbols="$(cd "${repo_dir}/aura" && python3 extract_unicode_chars.py --symbols-only weather.ino translations.h)"
+
+normalize_font_output() {
+  perl -0pi -e 's{^ \* Opts:.*$}{ * Opts: reproducible via aura/regenerate_chinese_fonts.sh}m; s/\n+\z/\n/' "$1"
+}
 
 for size in 12 14 16 20; do
   output_path="${repo_dir}/aura/lv_font_noto_sans_sc_${size}.c"
@@ -29,5 +37,5 @@ for size in 12 14 16 20; do
     --format lvgl \
     --lv-font-name "lv_font_noto_sans_sc_${size}" \
     --output "${output_path}"
-  perl -0pi -e 's/\n+\z/\n/' "${output_path}"
+  normalize_font_output "${output_path}"
 done

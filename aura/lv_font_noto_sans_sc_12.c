@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Size: 12 px
  * Bpp: 4
- * Opts: --font /tmp/aura-font.VzsIG3/NotoSansCJKsc-Regular.otf --range 0x20-0x7E --symbols °¿ÅÇÉÊÍÓÖÜßàáäåçèéêíñóöúûüğİıŞş‐→。一七三上下个中临主二云五京亮今位体你使例保六关凭出到动北午取后向吗周和器四在城多夜大天夹如存完定对小屏市幕度感成或手报按据接搜摸改效文新方无日时显晚晴暗更有机林果校正每比毛气没浏海消深温源点热然现用电直确示空简索结络网置脑自行要览触言认设访语请调过进连通配重长闭问间阴雨雪雷雾需霞面页预题风验高， --size 12 --bpp 4 --no-compress --format lvgl --lv-font-name lv_font_noto_sans_sc_12 --output /Users/luckmiracle/Documents/ChatGPT/CYD/.worktrees/landscape-weather-ui/aura/lv_font_noto_sans_sc_12.c
+ * Opts: reproducible via aura/regenerate_chinese_fonts.sh
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE
