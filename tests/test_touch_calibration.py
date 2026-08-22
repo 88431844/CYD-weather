@@ -93,15 +93,16 @@ class TouchCalibrationContractTests(unittest.TestCase):
             WEATHER.index("static void start_touch_calibration() {") :
             WEATHER.index("void daily_cb", WEATHER.index("static void start_touch_calibration() {"))
         ]
-        for reset in (
-            "kb = nullptr;",
-            "settings_win = nullptr;",
-            "location_win = nullptr;",
-            "lbl_settings_location = nullptr;",
-        ):
-            self.assertIn(reset, start)
-            self.assertLess(start.index(reset), start.index("lv_obj_clean(lv_scr_act());"))
-        self.assertIn("lv_keyboard_set_textarea(kb, nullptr);", start)
+        self.assertIn("detach_keyboard_from_textarea();", start)
+        self.assertIn("clear_screen_object_references();", start)
+        self.assertLess(
+            start.index("detach_keyboard_from_textarea();"),
+            start.index("clear_screen_object_references();"),
+        )
+        self.assertLess(
+            start.index("clear_screen_object_references();"),
+            start.index("lv_obj_clean(lv_scr_act());"),
+        )
 
         overlay = WEATHER[
             WEATHER.index("static void create_touch_calibration_overlay() {") :

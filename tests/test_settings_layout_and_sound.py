@@ -12,6 +12,16 @@ TRANSLATIONS = (ROOT / "aura" / "translations.h").read_text(encoding="utf-8")
 
 
 class SettingsLayoutAndSoundTests(unittest.TestCase):
+    def test_clock_ignores_deleted_or_calibration_widgets(self):
+        clock = WEATHER[
+            WEATHER.index("static void update_clock(lv_timer_t *timer) {") :
+            WEATHER.index("static void ta_event_cb", WEATHER.index("static void update_clock(lv_timer_t *timer) {"))
+        ]
+        self.assertIn("calibration_active", clock)
+        self.assertIn("!lbl_clock", clock)
+        self.assertIn("!lv_obj_is_valid(lbl_clock)", clock)
+        self.assertLess(clock.index("!lbl_clock"), clock.index("lv_label_set_text(lbl_clock, buf);"))
+
     def test_rebuild_renders_cached_snapshot_once_without_fetching(self):
         rebuild = WEATHER[
             WEATHER.index("static void rebuild_ui(bool reopen_settings) {") :
@@ -189,8 +199,13 @@ class SettingsLayoutAndSoundTests(unittest.TestCase):
             WEATHER.index("static void rebuild_ui(bool reopen_settings) {") :
             WEATHER.index("void setup()")
         ]
+        clear = WEATHER[
+            WEATHER.index("static void clear_screen_object_references() {") :
+            WEATHER.index("static void rebuild_ui", WEATHER.index("static void clear_screen_object_references() {"))
+        ]
+        self.assertIn("clear_screen_object_references();", rebuild)
         for label in ("lbl_home_location = nullptr;", "lbl_settings_location = nullptr;"):
-            self.assertIn(label, rebuild)
+            self.assertIn(label, clear)
 
         settings_close = WEATHER[
             WEATHER.index("if (tgt == btn_close_obj") :

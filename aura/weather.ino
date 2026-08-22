@@ -803,6 +803,7 @@ static void position_chart_temperature_labels() {
 }
 
 static void render_weather_snapshot() {
+  if (calibration_active) return;
   if (geometry_for_rotation(current_rotation).landscape) {
     render_landscape_snapshot();
   } else {
@@ -863,9 +864,11 @@ void update_home_status(uint8_t source, const char *updated_at) {
 }
 
 static void update_clock(lv_timer_t *timer) {
+  (void)timer;
   struct tm timeinfo;
 
   check_for_night_mode();
+  if (calibration_active || !lbl_clock || !lv_obj_is_valid(lbl_clock)) return;
 
   if (!getLocalTime(&timeinfo)) return;
 
@@ -1054,14 +1057,84 @@ void touchscreen_read(lv_indev_t *indev, lv_indev_data_t *data) {
   }
 }
 
-static void rebuild_ui(bool reopen_settings) {
-  if (calibration_active || qweather_portal_active) return;
-  if (kb && lv_obj_is_valid(kb)) lv_keyboard_set_textarea(kb, nullptr);
+static void detach_keyboard_from_textarea() {
+  if (kb && lv_obj_is_valid(kb)) {
+    lv_keyboard_set_textarea(kb, nullptr);
+  }
+}
+
+static void clear_screen_object_references() {
+  lbl_today_temp = nullptr;
+  lbl_today_feels_like = nullptr;
+  img_today_icon = nullptr;
+  lbl_forecast = nullptr;
+  box_daily = nullptr;
+  box_hourly = nullptr;
+  lbl_home_location = nullptr;
+  lbl_settings_location = nullptr;
+  lbl_clock = nullptr;
+  lbl_network_status = nullptr;
+  lbl_update_status = nullptr;
+
+  daily_chart = nullptr;
+  hourly_chart = nullptr;
+  daily_high_series = nullptr;
+  daily_low_series = nullptr;
+  hourly_temperature_series = nullptr;
+  landscape_current_condition = nullptr;
+  landscape_daily_button = nullptr;
+  landscape_hourly_button = nullptr;
+
+  loc_ta = nullptr;
+  results_dd = nullptr;
+  btn_close_loc = nullptr;
+  btn_close_obj = nullptr;
   kb = nullptr;
   settings_win = nullptr;
   location_win = nullptr;
-  lbl_home_location = nullptr;
-  lbl_settings_location = nullptr;
+  unit_switch = nullptr;
+  clock_24hr_switch = nullptr;
+  night_mode_switch = nullptr;
+  language_dropdown = nullptr;
+  touch_calibration_btn = nullptr;
+  sound_enabled_switch = nullptr;
+  sound_effect_dropdown = nullptr;
+  qweather_config_btn = nullptr;
+  rotation_buttonmatrix = nullptr;
+  qweather_portal_prompt = nullptr;
+
+  calibration_overlay = nullptr;
+  calibration_target = nullptr;
+  calibration_progress_label = nullptr;
+
+  for (uint8_t i = 0; i < FORECAST_POINT_COUNT; i++) {
+    lbl_daily_day[i] = nullptr;
+    lbl_daily_high[i] = nullptr;
+    lbl_daily_low[i] = nullptr;
+    img_daily[i] = nullptr;
+    lbl_hourly[i] = nullptr;
+    lbl_precipitation_probability[i] = nullptr;
+    lbl_hourly_temp[i] = nullptr;
+    img_hourly[i] = nullptr;
+    landscape_daily_dates[i] = nullptr;
+    landscape_daily_icons[i] = nullptr;
+    landscape_daily_conditions[i] = nullptr;
+    daily_high_labels[i] = nullptr;
+    daily_low_labels[i] = nullptr;
+    landscape_hourly_times[i] = nullptr;
+    landscape_hourly_icons[i] = nullptr;
+    landscape_hourly_conditions[i] = nullptr;
+    hourly_temperature_labels[i] = nullptr;
+  }
+  for (uint8_t i = 0; i < THEME_COUNT; i++) {
+    theme_buttons[i] = nullptr;
+  }
+}
+
+static void rebuild_ui(bool reopen_settings) {
+  if (calibration_active || qweather_portal_active) return;
+  detach_keyboard_from_textarea();
+  clear_screen_object_references();
   lv_obj_clean(lv_scr_act());
   create_ui();
   render_weather_snapshot();
@@ -1135,6 +1208,8 @@ void setup() {
 
   lv_timer_create(update_clock, 1000, NULL);
 
+  detach_keyboard_from_textarea();
+  clear_screen_object_references();
   lv_obj_clean(lv_scr_act());
   create_ui();
   startup_weather_timer = lv_timer_create(startup_weather_timer_cb, 500, nullptr);
@@ -1199,8 +1274,8 @@ static void restore_home_ui_after_wifi() {
   if (!wifi_splash_active) return;
 
   wifi_splash_active = false;
-  lbl_home_location = nullptr;
-  lbl_settings_location = nullptr;
+  detach_keyboard_from_textarea();
+  clear_screen_object_references();
   lv_obj_clean(lv_scr_act());
   create_ui();
 }
@@ -1724,8 +1799,8 @@ static void apply_display_preferences_async(void *user_data) {
 
 void wifi_splash_screen() {
   lv_obj_t *scr = lv_scr_act();
-  lbl_home_location = nullptr;
-  lbl_settings_location = nullptr;
+  detach_keyboard_from_textarea();
+  clear_screen_object_references();
   lv_obj_clean(scr);
   const ThemePalette &palette = theme_palette(current_theme);
   apply_root_theme(scr);
@@ -2536,27 +2611,8 @@ static void start_touch_calibration() {
   if (calibration_active || !settings_win) return;
 
   calibration_previous_rotation = current_rotation;
-  if (kb && lv_obj_is_valid(kb)) {
-    lv_keyboard_set_textarea(kb, nullptr);
-  }
-  kb = nullptr;
-  settings_win = nullptr;
-  location_win = nullptr;
-  lbl_settings_location = nullptr;
-  loc_ta = nullptr;
-  results_dd = nullptr;
-  btn_close_loc = nullptr;
-  btn_close_obj = nullptr;
-  unit_switch = nullptr;
-  clock_24hr_switch = nullptr;
-  night_mode_switch = nullptr;
-  language_dropdown = nullptr;
-  touch_calibration_btn = nullptr;
-  sound_enabled_switch = nullptr;
-  sound_effect_dropdown = nullptr;
-  qweather_config_btn = nullptr;
-  rotation_buttonmatrix = nullptr;
-  for (uint8_t i = 0; i < THEME_COUNT; i++) theme_buttons[i] = nullptr;
+  detach_keyboard_from_textarea();
+  clear_screen_object_references();
 
   current_rotation = SCREEN_ROTATION_0;
   lv_display_set_rotation(display, LV_DISPLAY_ROTATION_0);

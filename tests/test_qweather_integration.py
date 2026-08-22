@@ -43,6 +43,21 @@ class QWeatherIntegrationTests(unittest.TestCase):
             publish.index("render_weather_snapshot();"),
         )
 
+    def test_calibration_caches_new_snapshot_without_rendering_deleted_widgets(self):
+        publish = function_body(
+            "static void publish_weather_snapshot(",
+            "static void render_portrait_snapshot()",
+        )
+        self.assertLess(
+            publish.index("weather_snapshot = candidate;"),
+            publish.index("render_weather_snapshot();"),
+        )
+        render = function_body(
+            "static void render_weather_snapshot() {",
+            "String urlencode",
+        )
+        self.assertRegex(render, r"\{\s*if \(calibration_active\) return;")
+
     def test_open_meteo_builds_one_complete_candidate_before_publish(self):
         parser = function_body(
             "static void fetch_open_meteo_weather() {",

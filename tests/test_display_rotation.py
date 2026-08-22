@@ -131,23 +131,67 @@ class DisplayRotationContractTests(unittest.TestCase):
     def test_rebuild_ui_discards_old_objects_and_does_not_fetch_weather(self):
         rebuild = function_body("static void rebuild_ui")
         guard = "if (calibration_active || qweather_portal_active) return;"
-        detach = "lv_keyboard_set_textarea(kb, nullptr);"
+        detach = "detach_keyboard_from_textarea();"
+        clear = "clear_screen_object_references();"
         clean = "lv_obj_clean(lv_scr_act());"
         self.assertIn(guard, rebuild)
-        self.assertIn("if (kb && lv_obj_is_valid(kb))", rebuild)
         self.assertIn(detach, rebuild)
-        for assignment in ("kb = nullptr;", "settings_win = nullptr;", "location_win = nullptr;"):
-            self.assertIn(assignment, rebuild)
+        self.assertIn(clear, rebuild)
         self.assertIn(clean, rebuild)
         self.assertIn("create_ui();", rebuild)
         self.assertIn("if (reopen_settings) create_settings_window();", rebuild)
         self.assertNotIn("fetch_and_update_weather", rebuild)
         self.assertLess(rebuild.index(guard), rebuild.index(detach))
-        self.assertLess(rebuild.index(detach), rebuild.index(clean))
-        self.assertLess(rebuild.index("kb = nullptr;"), rebuild.index(clean))
-        self.assertLess(rebuild.index("settings_win = nullptr;"), rebuild.index(clean))
-        self.assertLess(rebuild.index("location_win = nullptr;"), rebuild.index(clean))
+        self.assertLess(rebuild.index(detach), rebuild.index(clear))
+        self.assertLess(rebuild.index(clear), rebuild.index(clean))
         self.assertLess(rebuild.index(clean), rebuild.index("create_ui();"))
+
+    def test_screen_reference_clearer_covers_every_owned_object_and_series(self):
+        clear = function_body("static void clear_screen_object_references()")
+        for pointer in (
+            "lbl_today_temp", "lbl_today_feels_like", "img_today_icon",
+            "lbl_forecast", "box_daily", "box_hourly", "lbl_home_location",
+            "lbl_settings_location", "lbl_clock", "lbl_network_status",
+            "lbl_update_status", "landscape_current_condition",
+            "landscape_daily_button", "landscape_hourly_button", "daily_chart",
+            "hourly_chart", "daily_high_series", "daily_low_series",
+            "hourly_temperature_series", "loc_ta", "results_dd",
+            "btn_close_loc", "btn_close_obj", "kb", "settings_win",
+            "location_win", "unit_switch", "clock_24hr_switch",
+            "night_mode_switch", "language_dropdown", "touch_calibration_btn",
+            "sound_enabled_switch", "sound_effect_dropdown",
+            "qweather_config_btn", "rotation_buttonmatrix",
+        ):
+            self.assertIn(f"{pointer} = nullptr;", clear)
+        for array in (
+            "lbl_daily_day", "lbl_daily_high", "lbl_daily_low", "img_daily",
+            "lbl_hourly", "lbl_precipitation_probability", "lbl_hourly_temp",
+            "img_hourly", "landscape_daily_dates", "landscape_daily_icons",
+            "landscape_daily_conditions", "daily_high_labels",
+            "daily_low_labels", "landscape_hourly_times",
+            "landscape_hourly_icons", "landscape_hourly_conditions",
+            "hourly_temperature_labels",
+        ):
+            self.assertIn(f"{array}[i] = nullptr;", clear)
+        self.assertIn("theme_buttons[i] = nullptr;", clear)
+
+    def test_every_full_screen_clean_detaches_then_clears_references(self):
+        self.assertIn("static void detach_keyboard_from_textarea()", WEATHER)
+        self.assertIn("static void clear_screen_object_references()", WEATHER)
+        cases = (
+            ("static void rebuild_ui(bool reopen_settings)", "lv_obj_clean(lv_scr_act());"),
+            ("void setup()", "lv_obj_clean(lv_scr_act());"),
+            ("static void restore_home_ui_after_wifi()", "lv_obj_clean(lv_scr_act());"),
+            ("void wifi_splash_screen()", "lv_obj_clean(scr);"),
+            ("static void start_touch_calibration()", "lv_obj_clean(lv_scr_act());"),
+        )
+        for signature, clean_call in cases:
+            body = function_body(signature)
+            detach = body.index("detach_keyboard_from_textarea();")
+            clear = body.index("clear_screen_object_references();")
+            clean = body.index(clean_call)
+            self.assertLess(detach, clear, signature)
+            self.assertLess(clear, clean, signature)
 
     def test_backlight_is_enabled_after_rotated_display_and_touch_setup(self):
         setup = function_body("void setup()")
