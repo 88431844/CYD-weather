@@ -1220,7 +1220,8 @@ void setup() {
   use_24_hour = prefs.getBool("use24Hour", false);
   sound_enabled = prefs.getBool("soundEnabled", true);
   sound_effect = constrain(prefs.getUInt("soundEffect", 0), 0, 3);
-  current_language = (Language)prefs.getUInt("language", LANG_ZH);
+  current_language = validated_language(
+      prefs.getUInt("language", LANG_ZH));
   weather_provider = validated_weather_provider(
       prefs.getUInt("weatherProvider", WEATHER_PROVIDER_OPEN_METEO));
   String saved_qweather_key = prefs.getString("qweatherKey", "");
@@ -2203,7 +2204,8 @@ static void create_forecast_segmented_control(lv_obj_t *scr) {
   lv_obj_t *settings_label = lv_label_create(settings_button);
   lv_label_set_text(settings_label, LV_SYMBOL_SETTINGS);
   lv_obj_set_style_text_font(
-      settings_label, get_font_14(), LV_PART_MAIN | LV_STATE_DEFAULT);
+      settings_label, &lv_font_montserrat_14,
+      LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_center(settings_label);
 }
 
@@ -3092,13 +3094,19 @@ void create_settings_window() {
   style_label(lbl_lang);
 
   language_dropdown = lv_dropdown_create(language_row);
-  lv_dropdown_set_options(language_dropdown, "English\nEspañol\nDeutsch\nFrançais\nTürkçe\nSvenska\nItaliano\n简体中文");
+  lv_dropdown_set_options(language_dropdown, "English\n简体中文");
   lv_dropdown_set_selected(language_dropdown, current_language);
   lv_obj_set_width(language_dropdown, 132);
-  lv_obj_set_style_text_font(language_dropdown, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_text_font(language_dropdown, get_font_12(), LV_PART_SELECTED | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_font(
+      language_dropdown, &lv_font_noto_sans_sc_12,
+      LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_font(
+      language_dropdown, &lv_font_noto_sans_sc_12,
+      LV_PART_SELECTED | LV_STATE_DEFAULT);
   lv_obj_t *list = lv_dropdown_get_list(language_dropdown);
-  lv_obj_set_style_text_font(list, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_font(
+      list, &lv_font_noto_sans_sc_12,
+      LV_PART_MAIN | LV_STATE_DEFAULT);
   apply_dropdown_theme(language_dropdown);
   lv_obj_align(language_dropdown, LV_ALIGN_RIGHT_MID, 0, 0);
   lv_obj_add_event_cb(language_dropdown, settings_event_handler, LV_EVENT_VALUE_CHANGED, NULL);

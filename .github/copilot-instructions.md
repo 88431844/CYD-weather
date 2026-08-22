@@ -71,7 +71,7 @@ After successfully uploading firmware, test these complete scenarios:
 3. **Settings Configuration**:
    - Test location search and selection
    - Test brightness adjustment
-   - Test language switching (English, Spanish, German, French)
+   - Test language switching (English and Simplified Chinese)
    - Test temperature unit toggle (°C/°F)
    - Test 12/24 hour time format toggle
 

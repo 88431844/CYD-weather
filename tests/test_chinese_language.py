@@ -19,15 +19,57 @@ FONT_REGENERATOR = ROOT / "aura" / "regenerate_chinese_fonts.sh"
 class ChineseLanguageSupportTests(unittest.TestCase):
     def test_simplified_chinese_is_the_default_language(self):
         self.assertRegex(WEATHER, r"static Language current_language\s*=\s*LANG_ZH")
-        self.assertRegex(WEATHER, r"prefs\.getUInt\(\"language\",\s*LANG_ZH\)")
+        self.assertRegex(
+            WEATHER,
+            r"current_language\s*=\s*validated_language\(\s*"
+            r"prefs\.getUInt\(\"language\",\s*LANG_ZH\)\s*\)",
+        )
 
-    def test_chinese_is_a_selectable_localized_language(self):
-        self.assertRegex(TRANSLATIONS, r"LANG_ZH\s*=\s*7")
+    def test_only_english_and_chinese_are_selectable_localized_languages(self):
+        self.assertRegex(
+            TRANSLATIONS,
+            r"enum Language\s*\{\s*LANG_EN\s*=\s*0,\s*LANG_ZH\s*=\s*1\s*\}",
+        )
         self.assertIn("static const LocalizedStrings strings_zh", TRANSLATIONS)
         self.assertIn('"体感温度"', TRANSLATIONS)
         self.assertIn('"七日天气预报"', TRANSLATIONS)
-        self.assertIn("简体中文", WEATHER)
-        self.assertRegex(TRANSLATIONS, r"case LANG_ZH:\s*return &strings_zh;")
+        self.assertIn(
+            'lv_dropdown_set_options(language_dropdown, "English\\n简体中文")',
+            WEATHER,
+        )
+        for unsupported in ("LANG_ES", "LANG_DE", "LANG_FR", "LANG_TR", "LANG_SV", "LANG_IT"):
+            self.assertNotIn(unsupported, TRANSLATIONS)
+        get_strings = TRANSLATIONS[TRANSLATIONS.index("static const LocalizedStrings* get_strings") :]
+        for unsupported in ("strings_es", "strings_de", "strings_fr", "strings_tr", "strings_sv", "strings_it"):
+            self.assertNotIn(unsupported, get_strings)
+        self.assertRegex(get_strings, r"case LANG_ZH:\s*return &strings_zh;")
+
+    def test_saved_legacy_language_values_fall_back_to_chinese(self):
+        self.assertRegex(
+            TRANSLATIONS,
+            r"validated_language\(uint32_t value\)[\s\S]*?"
+            r"value == LANG_EN\s*\?\s*LANG_EN\s*:\s*LANG_ZH",
+        )
+
+    def test_settings_symbol_uses_a_font_with_lvgl_symbol_fallback(self):
+        segmented = WEATHER[
+            WEATHER.index("static void create_forecast_segmented_control") :
+            WEATHER.index("static void style_landscape_chart")
+        ]
+        symbol_style = segmented[
+            segmented.index("lv_label_set_text(settings_label, LV_SYMBOL_SETTINGS)") :
+            segmented.index("lv_obj_center(settings_label)")
+        ]
+        self.assertIn("&lv_font_montserrat_14", symbol_style)
+        self.assertNotIn("get_font_14()", symbol_style)
+
+    def test_language_dropdown_uses_bilingual_font_in_english_mode(self):
+        settings = WEATHER[
+            WEATHER.index("// Language selection") :
+            WEATHER.index("// Sound enable")
+        ]
+        self.assertEqual(settings.count("&lv_font_noto_sans_sc_12"), 3)
+        self.assertNotIn("get_font_12()", settings)
 
     def test_chinese_uses_embedded_cjk_fonts(self):
         self.assertIn("lv_font_noto_sans_sc", WEATHER)

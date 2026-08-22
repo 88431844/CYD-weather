@@ -59,47 +59,30 @@ int main() {{
     def test_humidity_qweather_status_and_sound_effects_are_really_localized(self):
         self.run_cpp(r'''
   const LocalizedStrings *languages[] = {
-      &strings_en, &strings_es, &strings_de, &strings_fr,
-      &strings_tr, &strings_sv, &strings_it, &strings_zh};
+      &strings_en, &strings_zh};
   const char *humidity[] = {
-      "Humidity", "Humedad", "Luftfeuchte", "Humidité",
-      "Nem", "Luftfuktighet", "Umidità", "湿度"};
+      "Humidity", "湿度"};
   const char *effects[] = {
       "Classic\nSoft\nDouble\nLow",
-      "Clásico\nSuave\nDoble\nGrave",
-      "Klassisch\nSanft\nDoppelt\nTief",
-      "Classique\nDoux\nDouble\nGrave",
-      "Klasik\nYumuşak\nÇift\nDüşük",
-      "Klassisk\nMjuk\nDubbel\nLåg",
-      "Classico\nMorbido\nDoppio\nBasso",
       "经典\n柔和\n双音\n低沉"};
-  for (int index = 0; index < 8; index++) {
+  for (int index = 0; index < 2; index++) {
     if (std::strcmp(languages[index]->humidity, humidity[index])) return 10 + index;
     if (std::strcmp(languages[index]->sound_effect_options, effects[index])) return 20 + index;
   }
   if (std::strcmp(strings_zh.sound_enabled, "声音:")) return 30;
-  const LocalizedStrings *translated[] = {
-      &strings_es, &strings_de, &strings_fr, &strings_tr, &strings_sv, &strings_it};
-  for (const LocalizedStrings *strings : translated) {
-    if (std::strstr(strings->qweather_config_status, "configuration is active") ||
-        std::strstr(strings->qweather_config_status, "Connect to")) return 31;
-    if (!std::strstr(strings->qweather_config_status, "192.168.4.1")) return 32;
-  }
+  if (!std::strstr(strings_zh.qweather_config_status, "192.168.4.1")) return 31;
   return 0;
 ''')
 
     def test_all_languages_have_distinct_short_landscape_tabs(self):
         self.run_cpp(r'''
   const LocalizedStrings *languages[] = {
-      &strings_en, &strings_es, &strings_de, &strings_fr,
-      &strings_tr, &strings_sv, &strings_it, &strings_zh};
+      &strings_en, &strings_zh};
   const char *daily[] = {
-      "7 days", "7 días", "7 Tage", "7 jours",
-      "7 gün", "7 dygn", "7 gg", "7天"};
+      "7 days", "7天"};
   const char *hourly[] = {
-      "Hours", "Horas", "Std.", "Heures",
-      "Saat", "Tim", "Ore", "小时"};
-  for (int index = 0; index < 8; index++) {
+      "Hours", "小时"};
+  for (int index = 0; index < 2; index++) {
     if (!languages[index]->daily_tab[0] || !languages[index]->hourly_tab[0]) return 40 + index;
     if (!std::strcmp(languages[index]->daily_tab, languages[index]->hourly_tab)) return 50 + index;
     if (std::strcmp(languages[index]->daily_tab, daily[index])) return 60 + index;
@@ -113,8 +96,7 @@ int main() {{
   static_assert(std::extent<decltype(strings_en.theme_names)>::value == THEME_COUNT);
   static_assert(std::extent<decltype(strings_en.weather_conditions)>::value == 10);
   const LocalizedStrings *languages[] = {
-      &strings_en, &strings_es, &strings_de, &strings_fr,
-      &strings_tr, &strings_sv, &strings_it, &strings_zh};
+      &strings_en, &strings_zh};
   struct ExpectedStrings {
     const char *settings[4];
     const char *themes[THEME_COUNT];
@@ -124,29 +106,11 @@ int main() {{
       {{"Display", "Theme", "Orientation", "Correct touch"},
        {"Deep Sea", "Clear Sky", "Rainforest", "Sunset", "High Contrast"},
        {"Clear", "Partly cloudy", "Cloudy", "Fog", "Drizzle", "Light rain", "Heavy rain", "Sleet", "Snow", "Thunderstorm"}},
-      {{"Pantalla", "Tema", "Orientación", "Corregir toque"},
-       {"Mar profundo", "Cielo claro", "Selva", "Atardecer", "Alto contraste"},
-       {"Despejado", "Parcialmente nublado", "Nublado", "Niebla", "Llovizna", "Lluvia ligera", "Lluvia fuerte", "Aguanieve", "Nieve", "Tormenta"}},
-      {{"Anzeige", "Thema", "Ausrichtung", "Touch korrigieren"},
-       {"Tiefsee", "Klarer Himmel", "Regenwald", "Abendrot", "Hoher Kontrast"},
-       {"Klar", "Teilweise bewölkt", "Bewölkt", "Nebel", "Nieselregen", "Leichter Regen", "Starkregen", "Schneeregen", "Schnee", "Gewitter"}},
-      {{"Affichage", "Thème", "Orientation", "Corriger le tactile"},
-       {"Haute mer", "Ciel clair", "Forêt", "Crépuscule", "Contraste élevé"},
-       {"Dégagé", "Peu nuageux", "Nuageux", "Brouillard", "Bruine", "Pluie faible", "Forte pluie", "Grésil", "Neige", "Orage"}},
-      {{"Ekran", "Tema", "Yön", "Dokunmayı düzelt"},
-       {"Derin deniz", "Açık gökyüzü", "Yağmur ormanı", "Gün batımı", "Yüksek kontrast"},
-       {"Açık", "Parçalı bulutlu", "Bulutlu", "Sis", "Çiseleme", "Hafif yağmur", "Şiddetli yağmur", "Sulu kar", "Kar", "Fırtına"}},
-      {{"Skärm", "Tema", "Riktning", "Korrigera touch"},
-       {"Djuphav", "Klar himmel", "Regnskog", "Solnedgång", "Hög kontrast"},
-       {"Klart", "Delvis molnigt", "Molnigt", "Dimma", "Duggregn", "Lätt regn", "Kraftigt regn", "Snöblandat", "Snö", "Åska"}},
-      {{"Schermo", "Tema", "Orientamento", "Correggi tocco"},
-       {"Mare profondo", "Cielo sereno", "Foresta", "Tramonto", "Alto contrasto"},
-       {"Sereno", "Parzialmente nuvoloso", "Nuvoloso", "Nebbia", "Pioviggine", "Pioggia leggera", "Pioggia forte", "Nevischio", "Neve", "Temporale"}},
       {{"显示设置", "主题", "屏幕方向", "自动校正触摸"},
        {"深海", "晴空", "雨林", "晚霞", "高对比"},
        {"晴", "多云", "阴", "雾", "毛毛雨", "小雨", "大雨", "雨夹雪", "雪", "雷雨"}},
   };
-  for (int language = 0; language < 8; language++) {
+  for (int language = 0; language < 2; language++) {
     const LocalizedStrings *actual = languages[language];
     const char *settings[] = {
         actual->display_settings, actual->theme,

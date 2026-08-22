@@ -34,7 +34,7 @@ https://makerworld.com/en/models/1382304-aura-smart-weather-forecast-display
 
 ### 支持语言
 
-界面支持英语、西班牙语、德语、法语、土耳其语、瑞典语、意大利语和简体中文。
+界面支持英语和简体中文，默认使用简体中文。
 
 ### 天气数据源
 
