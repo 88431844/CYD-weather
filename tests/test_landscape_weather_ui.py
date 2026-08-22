@@ -103,20 +103,48 @@ class LandscapeWeatherUiTests(unittest.TestCase):
         self.assertIn("render_landscape_snapshot();", render)
         self.assertIn("render_portrait_snapshot();", render)
 
-    def test_header_has_current_weather_status_segmented_controls_and_settings(self):
+    def test_landscape_header_prioritizes_large_current_weather(self):
         header = function_body(
             "static void create_landscape_header(lv_obj_t *scr) {",
             "static void create_forecast_segmented_control",
         )
-        for symbol in (
-            "lbl_home_location",
-            "lbl_network_status",
-            "lbl_update_status",
-            "lbl_today_temp",
-            "landscape_current_condition",
-            "lbl_today_feels_like",
-        ):
-            self.assertIn(symbol, header)
+        self.assertNotIn("lbl_home_location = lv_label_create(scr);", header)
+        self.assertNotIn("lbl_network_status = lv_label_create(scr);", header)
+        self.assertIn("lbl_update_status = lv_label_create(scr);", header)
+        self.assertIn("lv_obj_set_pos(lbl_update_status, 6, 44);", header)
+        self.assertIn("lv_obj_set_size(lbl_today_temp, 76, 46);", header)
+        self.assertIn("lv_obj_set_pos(lbl_today_temp, 6, 0);", header)
+        self.assertIn("lbl_today_temp, get_font_42()", header)
+        self.assertIn(
+            "lv_obj_set_size(landscape_current_condition, 96, 24);", header
+        )
+        self.assertIn(
+            "lv_obj_set_pos(landscape_current_condition, 84, 4);", header
+        )
+        self.assertIn("landscape_current_condition, get_font_20()", header)
+        self.assertIn("lv_obj_set_size(lbl_today_feels_like, 100, 16);", header)
+        self.assertIn("lv_obj_set_pos(lbl_today_feels_like, 84, 32);", header)
+
+    def test_landscape_update_status_omits_provider_and_ip(self):
+        update = function_body(
+            "void update_home_status(uint8_t source, const char *updated_at) {",
+            "static void update_clock",
+        )
+        self.assertIn("if (lbl_network_status)", update)
+        self.assertIn("if (lbl_update_status)", update)
+        self.assertIn("geometry_for_rotation(current_rotation).landscape", update)
+        self.assertIn(
+            'lv_label_set_text_fmt(lbl_update_status, "%s %s",\n'
+            "                          strings->weather_updated, compact_updated.c_str());",
+            update,
+        )
+        self.assertIn(
+            'lv_label_set_text_fmt(lbl_update_status, "%s %s",\n'
+            "                          source_name.c_str(), compact_updated.c_str());",
+            update,
+        )
+
+    def test_landscape_segmented_controls_and_settings_remain_unchanged(self):
         segmented = function_body(
             "static void create_forecast_segmented_control(lv_obj_t *scr) {",
             "static void create_daily_chart",
@@ -129,6 +157,9 @@ class LandscapeWeatherUiTests(unittest.TestCase):
         self.assertIn("select_hourly_cb", segmented)
         self.assertIn("LV_SYMBOL_SETTINGS", segmented)
         self.assertIn("screen_event_cb", segmented)
+        self.assertIn("lv_obj_set_pos(landscape_daily_button, 188, 2);", segmented)
+        self.assertIn("lv_obj_set_pos(landscape_hourly_button, 236, 2);", segmented)
+        self.assertIn("lv_obj_set_pos(settings_button, 284, 2);", segmented)
 
     def test_landscape_summary_localizes_optional_humidity(self):
         renderer = function_body(
