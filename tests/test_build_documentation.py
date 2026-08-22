@@ -9,6 +9,9 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 PLAN = (ROOT / "docs" / "superpowers" / "plans" /
         "2026-08-22-landscape-weather-ui.md").read_text(encoding="utf-8")
+DEFAULT_PROVIDER_PLAN = (ROOT / "docs" / "superpowers" / "plans" /
+                         "2026-08-22-default-weather-provider.md").read_text(
+                             encoding="utf-8")
 README = (ROOT / "README.md").read_text(encoding="utf-8")
 
 
@@ -28,6 +31,29 @@ class BuildDocumentationTests(unittest.TestCase):
         self.assertRegex(compile_section, r'"\$\{?sketch_dir\}?/aura"\s*```')
         self.assertNotRegex(compile_section, r"(?m)^\s{2}aura\s*$")
         self.assertNotIn("LV_LVGL_H_INCLUDE_SIMPLE", compile_section)
+
+    def test_default_provider_build_stages_the_cyd_tft_configuration(self):
+        compile_section = DEFAULT_PROVIDER_PLAN[
+            DEFAULT_PROVIDER_PLAN.index(
+                "- [x] **Step 5: Compile the firmware in an isolated "
+                "temporary sketch directory**") :
+        ]
+        self.assertRegex(
+            compile_section,
+            r'cp -R /Users/luckmiracle/Documents/Arduino/libraries/TFT_eSPI '
+            r'"\$library_dir/TFT_eSPI"',
+        )
+        self.assertRegex(
+            compile_section,
+            r'cp TFT_eSPI/User_Setup\.h '
+            r'"\$library_dir/TFT_eSPI/User_Setup\.h"',
+        )
+        self.assertIn('--libraries "$library_dir"', compile_section)
+        self.assertIn(
+            'compiler.cpp.extra_flags=-DLV_CONF_INCLUDE_SIMPLE '
+            '-I/Users/luckmiracle/Documents/ChatGPT/CYD/lvgl/src',
+            compile_section,
+        )
 
     def test_readme_is_fully_chinese_while_preserving_project_facts(self):
         for english_heading in (

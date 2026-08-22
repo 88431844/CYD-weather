@@ -230,14 +230,23 @@ Run:
 
 ```bash
 sketch_dir="$(mktemp -d /private/tmp/cyd-default-provider.XXXXXX)"
+build_dir="$(mktemp -d /private/tmp/cyd-default-provider-build.XXXXXX)"
+library_dir="$(mktemp -d /private/tmp/cyd-default-provider-libs.XXXXXX)"
 cp -R aura "$sketch_dir/aura"
 mv "$sketch_dir/aura/weather.ino" "$sketch_dir/aura/aura.ino"
+cp -R /Users/luckmiracle/Documents/Arduino/libraries/TFT_eSPI "$library_dir/TFT_eSPI"
+cp TFT_eSPI/User_Setup.h "$library_dir/TFT_eSPI/User_Setup.h"
 arduino-cli compile --fqbn esp32:esp32:esp32:PartitionScheme=huge_app \
-  --libraries "$HOME/Documents/Arduino/libraries" \
-  --build-path "$sketch_dir/build" "$sketch_dir/aura"
+  --libraries "$library_dir" \
+  --build-path "$build_dir" \
+  --build-property "compiler.cpp.extra_flags=-DLV_CONF_INCLUDE_SIMPLE -I/Users/luckmiracle/Documents/ChatGPT/CYD/lvgl/src" \
+  "$sketch_dir/aura"
 ```
 
-Expected: Arduino CLI exits successfully with flash and RAM usage summaries.
+Expected: Arduino CLI exits successfully with flash and RAM usage summaries. The
+temporary TFT_eSPI copy must contain the repository `TFT_eSPI/User_Setup.h`; using
+the installed library configuration directly can compile a binary for the wrong
+display driver and pins.
 
 - [x] **Step 6: Review the final diff**
 
