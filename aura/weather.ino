@@ -682,7 +682,7 @@ static void render_landscape_snapshot() {
     const float current_feels_like =
         temperature_for_display(current.feels_like);
     lv_label_set_text_fmt(
-        lbl_today_temp, "%.0f°%c", current_temperature, unit);
+        lbl_today_temp, "%.0f°", current_temperature);
     lv_label_set_text(
         landscape_current_condition,
         weather_condition_name(current.weather_code));
@@ -697,7 +697,7 @@ static void render_landscape_snapshot() {
           strings->feels_like_temp, current_feels_like, unit);
     }
   } else {
-    lv_label_set_text(lbl_today_temp, strings->temp_placeholder);
+    lv_label_set_text(lbl_today_temp, "--°");
     lv_label_set_text(landscape_current_condition, "--");
     lv_label_set_text(lbl_today_feels_like, strings->feels_like_temp);
   }
@@ -874,17 +874,28 @@ void update_home_status(uint8_t source, const char *updated_at) {
   weather_source = source;
   weather_updated_at = format_weather_timestamp(updated_at);
 
-  if (!lbl_network_status || !lbl_update_status) return;
+  if (!lbl_network_status && !lbl_update_status) return;
 
   const LocalizedStrings *strings = get_strings(current_language);
-  String ip = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : String("--");
-  String source_name = weather_source_name(weather_source, strings);
   String updated = weather_updated_at.length() > 0 ? weather_updated_at : String("--");
   String compact_updated = updated.length() >= 16 ? updated.substring(11, 16) : updated;
 
-  lv_label_set_text_fmt(lbl_network_status, "%s %s", strings->device_ip, ip.c_str());
-  lv_label_set_text_fmt(lbl_update_status, "%s %s",
-                        source_name.c_str(), compact_updated.c_str());
+  if (lbl_network_status) {
+    String ip = WiFi.status() == WL_CONNECTED
+        ? WiFi.localIP().toString() : String("--");
+    lv_label_set_text_fmt(
+        lbl_network_status, "%s %s", strings->device_ip, ip.c_str());
+  }
+  if (lbl_update_status) {
+    if (geometry_for_rotation(current_rotation).landscape) {
+      lv_label_set_text_fmt(lbl_update_status, "%s %s",
+                          strings->weather_updated, compact_updated.c_str());
+    } else {
+      String source_name = weather_source_name(weather_source, strings);
+      lv_label_set_text_fmt(lbl_update_status, "%s %s",
+                          source_name.c_str(), compact_updated.c_str());
+    }
+  }
 }
 
 static void update_clock(lv_timer_t *timer) {
@@ -2086,30 +2097,9 @@ static void create_landscape_header(lv_obj_t *scr) {
   const ThemePalette &palette = theme_palette(current_theme);
   const LocalizedStrings *strings = get_strings(current_language);
 
-  lbl_home_location = lv_label_create(scr);
-  lv_obj_set_size(lbl_home_location, 96, 15);
-  lv_obj_set_pos(lbl_home_location, 6, 2);
-  lv_label_set_long_mode(lbl_home_location, LV_LABEL_LONG_DOT);
-  lv_label_set_text(lbl_home_location, location.c_str());
-  lv_obj_set_style_text_font(
-      lbl_home_location, get_font_14(), LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_text_color(
-      lbl_home_location, theme_color(palette.text),
-      LV_PART_MAIN | LV_STATE_DEFAULT);
-
-  lbl_network_status = lv_label_create(scr);
-  lv_obj_set_size(lbl_network_status, 96, 13);
-  lv_obj_set_pos(lbl_network_status, 6, 19);
-  lv_label_set_long_mode(lbl_network_status, LV_LABEL_LONG_DOT);
-  lv_obj_set_style_text_font(
-      lbl_network_status, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_text_color(
-      lbl_network_status, theme_color(palette.muted),
-      LV_PART_MAIN | LV_STATE_DEFAULT);
-
   lbl_update_status = lv_label_create(scr);
-  lv_obj_set_size(lbl_update_status, 96, 13);
-  lv_obj_set_pos(lbl_update_status, 6, 35);
+  lv_obj_set_size(lbl_update_status, 76, 13);
+  lv_obj_set_pos(lbl_update_status, 6, 44);
   lv_label_set_long_mode(lbl_update_status, LV_LABEL_LONG_DOT);
   lv_obj_set_style_text_font(
       lbl_update_status, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -2118,30 +2108,30 @@ static void create_landscape_header(lv_obj_t *scr) {
       LV_PART_MAIN | LV_STATE_DEFAULT);
 
   lbl_today_temp = lv_label_create(scr);
-  lv_obj_set_size(lbl_today_temp, 78, 23);
-  lv_obj_set_pos(lbl_today_temp, 106, 0);
-  lv_label_set_text(lbl_today_temp, strings->temp_placeholder);
+  lv_obj_set_size(lbl_today_temp, 76, 46);
+  lv_obj_set_pos(lbl_today_temp, 6, 0);
+  lv_label_set_text(lbl_today_temp, "--°");
   lv_obj_set_style_text_font(
-      lbl_today_temp, get_font_20(), LV_PART_MAIN | LV_STATE_DEFAULT);
+      lbl_today_temp, get_font_42(), LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_text_color(
       lbl_today_temp, theme_color(palette.text),
       LV_PART_MAIN | LV_STATE_DEFAULT);
 
   landscape_current_condition = lv_label_create(scr);
-  lv_obj_set_size(landscape_current_condition, 78, 14);
-  lv_obj_set_pos(landscape_current_condition, 106, 24);
+  lv_obj_set_size(landscape_current_condition, 96, 24);
+  lv_obj_set_pos(landscape_current_condition, 84, 4);
   lv_label_set_long_mode(landscape_current_condition, LV_LABEL_LONG_DOT);
   lv_label_set_text(landscape_current_condition, "--");
   lv_obj_set_style_text_font(
-      landscape_current_condition, get_font_12(),
+      landscape_current_condition, get_font_20(),
       LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_text_color(
       landscape_current_condition, theme_color(palette.accent),
       LV_PART_MAIN | LV_STATE_DEFAULT);
 
   lbl_today_feels_like = lv_label_create(scr);
-  lv_obj_set_size(lbl_today_feels_like, 208, 14);
-  lv_obj_set_pos(lbl_today_feels_like, 106, 40);
+  lv_obj_set_size(lbl_today_feels_like, 100, 16);
+  lv_obj_set_pos(lbl_today_feels_like, 84, 32);
   lv_label_set_long_mode(lbl_today_feels_like, LV_LABEL_LONG_DOT);
   lv_label_set_text(lbl_today_feels_like, strings->feels_like_temp);
   lv_obj_set_style_text_font(

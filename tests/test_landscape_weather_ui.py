@@ -114,6 +114,7 @@ class LandscapeWeatherUiTests(unittest.TestCase):
         self.assertIn("lv_obj_set_pos(lbl_update_status, 6, 44);", header)
         self.assertIn("lv_obj_set_size(lbl_today_temp, 76, 46);", header)
         self.assertIn("lv_obj_set_pos(lbl_today_temp, 6, 0);", header)
+        self.assertIn('lv_label_set_text(lbl_today_temp, "--°");', header)
         self.assertIn("lbl_today_temp, get_font_42()", header)
         self.assertIn(
             "lv_obj_set_size(landscape_current_condition, 96, 24);", header
@@ -166,6 +167,8 @@ class LandscapeWeatherUiTests(unittest.TestCase):
             "static void render_landscape_snapshot() {",
             "static void set_object_hidden(",
         )
+        self.assertIn('lbl_today_temp, "%.0f°", current_temperature', renderer)
+        self.assertIn('lv_label_set_text(lbl_today_temp, "--°");', renderer)
         self.assertIn("current.has_humidity", renderer)
         self.assertIn("current.humidity", renderer)
         self.assertIn("strings->humidity", renderer)
