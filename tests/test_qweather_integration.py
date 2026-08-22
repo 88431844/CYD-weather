@@ -98,6 +98,13 @@ class QWeatherIntegrationTests(unittest.TestCase):
         self.assertIn("using Open-Meteo fallback", WEATHER)
         self.assertIn("api.open-meteo.com/v1/forecast", WEATHER)
 
+    def test_weather_response_updates_source_and_timestamp_status(self):
+        self.assertIn("update_home_status(WEATHER_SOURCE_OPEN_METEO", WEATHER)
+        self.assertIn("update_home_status(WEATHER_SOURCE_QWEATHER", WEATHER)
+        self.assertIn('doc["current"]["time"]', WEATHER)
+        self.assertIn('doc["updateTime"]', WEATHER)
+        self.assertIn("weather_updated_at", WEATHER)
+
     def test_failed_qweather_requests_use_open_meteo_fallback(self):
         fetch = WEATHER[
             WEATHER.rindex("void fetch_and_update_weather()") :

@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include "esp_arduino_version.h"
 #include <WiFiManager.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
@@ -24,6 +25,9 @@
 #define XPT2046_CS 33    // T_CS
 #define LCD_BACKLIGHT_PIN 21
 #define SPEAKER_PIN 26   // On-board speaker/buzzer on ESP32-2432S028R
+#define SPEAKER_LEDC_CHANNEL 0
+#define SPEAKER_DUTY 24
+#define CLICK_SOUND_REFRESH_DELAY_MS 60
 #define SCREEN_WIDTH 240
 #define SCREEN_HEIGHT 320
 #define DRAW_BUF_SIZE (SCREEN_WIDTH * SCREEN_HEIGHT / 10 * (LV_COLOR_DEPTH / 8))
@@ -133,11 +137,22 @@ static char dd_opts[512];
 static DynamicJsonDocument geoDoc(8 * 1024);
 static JsonArray geoResults;
 
+enum WeatherSource {
+  WEATHER_SOURCE_UNKNOWN,
+  WEATHER_SOURCE_QWEATHER,
+  WEATHER_SOURCE_OPEN_METEO
+};
+
+static uint8_t weather_source = WEATHER_SOURCE_UNKNOWN;
+static String weather_updated_at;
+
 // Screen dimming variables
 static bool night_mode_active = false;
 static bool temp_screen_wakeup_active = false;
 static lv_timer_t *temp_screen_wakeup_timer = nullptr;
 static lv_timer_t *startup_weather_timer = nullptr;
+static lv_timer_t *speaker_timer = nullptr;
+static uint8_t speaker_sequence_step = 0;
 
 // UI components
 static lv_obj_t *lbl_today_temp;
@@ -167,6 +182,8 @@ static lv_obj_t *clock_24hr_switch;
 static lv_obj_t *night_mode_switch;
 static lv_obj_t *language_dropdown;
 static lv_obj_t *lbl_clock;
+static lv_obj_t *lbl_network_status;
+static lv_obj_t *lbl_update_status;
 static lv_obj_t *touch_calibration_btn;
 static lv_obj_t *sound_enabled_switch;
 static lv_obj_t *sound_effect_dropdown;
@@ -248,6 +265,8 @@ void create_ui();
 void fetch_and_update_weather();
 void create_settings_window();
 void play_click_sound();
+static void stop_click_sound(lv_timer_t *timer);
+static void schedule_weather_refresh_after_click();
 static void start_touch_calibration();
 static void finish_touch_calibration(bool success);
 static void calibration_timer_cb(lv_timer_t *timer);
@@ -322,6 +341,41 @@ String urlencode(const String &str) {
     }
   }
   return encoded;
+}
+
+static String format_weather_timestamp(const char *timestamp) {
+  if (!timestamp || timestamp[0] == '\0') return String();
+
+  String formatted(timestamp);
+  int separator = formatted.indexOf('T');
+  if (separator < 0) separator = formatted.indexOf(' ');
+  if (separator >= 0) formatted.setCharAt(separator, ' ');
+  if (formatted.length() > 16) formatted = formatted.substring(0, 16);
+  return formatted;
+}
+
+static const char *weather_source_name(uint8_t source,
+                                       const LocalizedStrings *strings) {
+  if (source == WEATHER_SOURCE_QWEATHER) return strings->qweather_name;
+  if (source == WEATHER_SOURCE_OPEN_METEO) return strings->open_meteo_name;
+  return "--";
+}
+
+void update_home_status(uint8_t source, const char *updated_at) {
+  weather_source = source;
+  weather_updated_at = format_weather_timestamp(updated_at);
+
+  if (!lbl_network_status || !lbl_update_status) return;
+
+  const LocalizedStrings *strings = get_strings(current_language);
+  String ip = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : String("--");
+  String source_name = weather_source_name(weather_source, strings);
+  String updated = weather_updated_at.length() > 0 ? weather_updated_at : String("--");
+  String compact_updated = updated.length() >= 16 ? updated.substring(11, 16) : updated;
+
+  lv_label_set_text_fmt(lbl_network_status, "%s %s", strings->device_ip, ip.c_str());
+  lv_label_set_text_fmt(lbl_update_status, "%s %s",
+                        source_name.c_str(), compact_updated.c_str());
 }
 
 static void update_clock(lv_timer_t *timer) {
@@ -919,6 +973,9 @@ void wifi_splash_screen() {
 
 void create_ui() {
   lv_obj_t *scr = lv_scr_act();
+  lv_obj_scroll_to(scr, 0, 0, LV_ANIM_OFF);
+  lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_scrollbar_mode(scr, LV_SCROLLBAR_MODE_OFF);
   lv_obj_set_style_bg_color(scr, lv_color_hex(0x4c8cb9), LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_bg_grad_color(scr, lv_color_hex(0xa6cdec), LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_bg_grad_dir(scr, LV_GRAD_DIR_VER, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -929,7 +986,7 @@ void create_ui() {
 
   img_today_icon = lv_img_create(scr);
   lv_img_set_src(img_today_icon, &image_partly_cloudy);
-  lv_obj_align(img_today_icon, LV_ALIGN_TOP_MID, -64, 4);
+  lv_obj_align(img_today_icon, LV_ALIGN_TOP_MID, -64, 12);
 
   static lv_style_t default_label_style;
   lv_style_init(&default_label_style);
@@ -950,15 +1007,33 @@ void create_ui() {
   lv_obj_set_style_text_color(lbl_today_feels_like, lv_color_hex(0xe4ffff), LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_align(lbl_today_feels_like, LV_ALIGN_TOP_MID, 45, 75);
 
+  lbl_network_status = lv_label_create(scr);
+  lv_obj_set_width(lbl_network_status, 150);
+  lv_label_set_long_mode(lbl_network_status, LV_LABEL_LONG_DOT);
+  lv_obj_set_style_text_font(lbl_network_status, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_color(lbl_network_status, lv_color_hex(0xe4ffff), LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_align(lbl_network_status, LV_ALIGN_TOP_LEFT, 4, 2);
+
+  lbl_update_status = lv_label_create(scr);
+  lv_obj_set_width(lbl_update_status, 100);
+  lv_label_set_long_mode(lbl_update_status, LV_LABEL_LONG_DOT);
+  lv_obj_set_style_text_font(lbl_update_status, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_color(lbl_update_status, lv_color_hex(0xe4ffff), LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_align(lbl_update_status, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_align(lbl_update_status, LV_ALIGN_TOP_RIGHT, -10, 118);
+  update_home_status(weather_source, weather_updated_at.c_str());
+
   lbl_forecast = lv_label_create(scr);
+  lv_obj_set_width(lbl_forecast, 120);
+  lv_label_set_long_mode(lbl_forecast, LV_LABEL_LONG_DOT);
   lv_label_set_text(lbl_forecast, strings->seven_day_forecast);
   lv_obj_set_style_text_font(lbl_forecast, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_text_color(lbl_forecast, lv_color_hex(0xe4ffff), LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_align(lbl_forecast, LV_ALIGN_TOP_LEFT, 20, 110);
+  lv_obj_align(lbl_forecast, LV_ALIGN_TOP_LEFT, 10, 118);
 
   box_daily = lv_obj_create(scr);
   lv_obj_set_size(box_daily, 220, 180);
-  lv_obj_align(box_daily, LV_ALIGN_TOP_LEFT, 10, 135);
+  lv_obj_align(box_daily, LV_ALIGN_TOP_LEFT, 10, 140);
   lv_obj_set_style_bg_color(box_daily, lv_color_hex(0x5e9bc8), LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_bg_opa(box_daily, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_radius(box_daily, 4, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -996,7 +1071,7 @@ void create_ui() {
 
   box_hourly = lv_obj_create(scr);
   lv_obj_set_size(box_hourly, 220, 180);
-  lv_obj_align(box_hourly, LV_ALIGN_TOP_LEFT, 10, 135);
+  lv_obj_align(box_hourly, LV_ALIGN_TOP_LEFT, 10, 140);
   lv_obj_set_style_bg_color(box_hourly, lv_color_hex(0x5e9bc8), LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_bg_opa(box_hourly, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_radius(box_hourly, 4, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1414,8 +1489,12 @@ void create_settings_window() {
   settings_win = lv_win_create(lv_scr_act());
   lv_obj_set_size(settings_win, SCREEN_WIDTH, SCREEN_HEIGHT);
   lv_obj_center(settings_win);
+  lv_obj_clear_flag(settings_win, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_scrollbar_mode(settings_win, LV_SCROLLBAR_MODE_OFF);
   lv_obj_t *header = lv_win_get_header(settings_win);
   lv_obj_set_style_height(header, 30, 0);
+  lv_obj_clear_flag(header, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_scrollbar_mode(header, LV_SCROLLBAR_MODE_OFF);
   lv_obj_t *title = lv_win_add_title(settings_win, strings->aura_settings);
   lv_obj_set_style_text_font(title, get_font_16(), 0);
   lv_obj_set_style_margin_left(title, 10, 0);
@@ -1445,7 +1524,7 @@ void create_settings_window() {
 
   auto create_row = [&](int height) {
     lv_obj_t *row = lv_obj_create(cont);
-    lv_obj_set_width(row, 214);
+    lv_obj_set_width(row, LV_PCT(100));
     lv_obj_set_height(row, height);
     lv_obj_set_style_pad_all(row, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(row, 0, LV_PART_MAIN);
@@ -1694,27 +1773,86 @@ static void settings_event_handler(lv_event_t *e) {
     lv_obj_del(settings_win);
     settings_win = nullptr;
 
-    fetch_and_update_weather();
+    schedule_weather_refresh_after_click();
   }
+}
+
+static void refresh_weather_after_click_sound(lv_timer_t *timer) {
+  (void)timer;
+  fetch_and_update_weather();
+}
+
+static void schedule_weather_refresh_after_click() {
+  lv_timer_t *timer = lv_timer_create(
+      refresh_weather_after_click_sound, CLICK_SOUND_REFRESH_DELAY_MS, nullptr);
+  lv_timer_set_repeat_count(timer, 1);
+}
+
+static void configure_click_tone(uint32_t frequency) {
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  ledcAttach(SPEAKER_PIN, frequency, 8);
+  ledcWrite(SPEAKER_PIN, SPEAKER_DUTY);
+#else
+  ledcSetup(SPEAKER_LEDC_CHANNEL, frequency, 8);
+  ledcAttachPin(SPEAKER_PIN, SPEAKER_LEDC_CHANNEL);
+  ledcWrite(SPEAKER_LEDC_CHANNEL, SPEAKER_DUTY);
+#endif
+}
+
+static void start_click_tone(uint32_t frequency, uint32_t duration_ms) {
+  configure_click_tone(frequency);
+  speaker_timer = lv_timer_create(stop_click_sound, duration_ms, nullptr);
+  // The callback owns deletion because sound effect 2 chains a second tone.
+  lv_timer_set_repeat_count(speaker_timer, -1);
+}
+
+static void release_click_tone() {
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  ledcWriteTone(SPEAKER_PIN, 0);
+  ledcDetach(SPEAKER_PIN);
+#else
+  ledcWrite(SPEAKER_LEDC_CHANNEL, 0);
+  ledcDetachPin(SPEAKER_PIN);
+#endif
+}
+
+static void stop_click_sound(lv_timer_t *timer) {
+  if (speaker_sequence_step == 1) {
+    speaker_sequence_step = 2;
+    configure_click_tone(3000);
+    lv_timer_set_period(timer, 18);
+    return;
+  }
+
+  release_click_tone();
+  speaker_sequence_step = 0;
+  speaker_timer = nullptr;
+  lv_timer_del(timer);
 }
 
 void play_click_sound() {
   if (!sound_enabled) return;
 
+  if (speaker_timer) {
+    release_click_tone();
+    lv_timer_del(speaker_timer);
+    speaker_timer = nullptr;
+    speaker_sequence_step = 0;
+  }
+
   switch (sound_effect) {
     case 1:
-      tone(SPEAKER_PIN, 1500, 35);
+      start_click_tone(1500, 35);
       break;
     case 2:
-      tone(SPEAKER_PIN, 2200, 18);
-      delay(25);
-      tone(SPEAKER_PIN, 3000, 18);
+      speaker_sequence_step = 1;
+      start_click_tone(2200, 18);
       break;
     case 3:
-      tone(SPEAKER_PIN, 900, 45);
+      start_click_tone(900, 45);
       break;
     default:
-      tone(SPEAKER_PIN, 2200, 25);
+      start_click_tone(2200, 25);
       break;
   }
 }
@@ -1819,6 +1957,7 @@ static void fetch_open_meteo_weather() {
       const LocalizedStrings* strings = get_strings(current_language);
       int utc_offset_seconds = doc["utc_offset_seconds"].as<int>();
       configTime(utc_offset_seconds, 0, "pool.ntp.org", "time.nist.gov");
+      update_home_status(WEATHER_SOURCE_OPEN_METEO, doc["current"]["time"] | "");
 
       char unit = use_fahrenheit ? 'F' : 'C';
       lv_label_set_text_fmt(lbl_today_temp, "%.0f°%c", t_now, unit);
@@ -1917,6 +2056,7 @@ void fetch_and_update_weather() {
   }
 
   configTime(8 * 3600, 0, "pool.ntp.org", "time.nist.gov");
+  update_home_status(WEATHER_SOURCE_QWEATHER, doc["updateTime"] | "");
   lv_label_set_text_fmt(lbl_today_temp, "%.0f°%c", t_now, unit);
   lv_label_set_text_fmt(lbl_today_feels_like, "%s %.0f°%c", strings->feels_like_temp, t_ap, unit);
   lv_img_set_src(img_today_icon, choose_image(code_now, is_day));

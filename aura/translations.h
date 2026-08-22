@@ -46,6 +46,11 @@ struct LocalizedStrings {
   const char* sound_effect_options;
   const char* qweather_config;
   const char* qweather_config_status;
+  const char* device_ip;
+  const char* weather_source;
+  const char* weather_updated;
+  const char* qweather_name;
+  const char* open_meteo_name;
 };
 
 #define DEFAULT_CAPTIVE_SSID "Aura"
@@ -81,7 +86,8 @@ static const LocalizedStrings strings_en = {
   "Point %d/5", "Cancel Calibration", "Touch calibration complete.",
   "Touch calibration failed; previous settings kept.",
   "Sound:", "Effect:", "Classic\nSoft\nDouble\nLow", "Configure QWeather",
-  "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1."
+  "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1.",
+  "IP:", "Source:", "Updated:", "QWeather", "Open-Meteo"
 };
 
 static const LocalizedStrings strings_es = {
@@ -117,7 +123,8 @@ static const LocalizedStrings strings_es = {
   "Punto %d/5", "Cancelar calibración", "Calibración táctil completa.",
   "Calibración fallida; se conservaron los ajustes anteriores.",
   "Sonido:", "Efecto:", "Classic\nSoft\nDouble\nLow", "Configurar QWeather",
-  "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1."
+  "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1.",
+  "IP:", "Source:", "Updated:", "QWeather", "Open-Meteo"
 };
 
 static const LocalizedStrings strings_de = {
@@ -155,7 +162,8 @@ static const LocalizedStrings strings_de = {
   "Punkt %d/5", "Kalibrierung abbrechen", "Touchscreen kalibriert.",
   "Kalibrierung fehlgeschlagen; alte Einstellungen behalten.",
   "Ton:", "Effekt:", "Classic\nSoft\nDouble\nLow", "QWeather konfigurieren",
-  "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1."
+  "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1.",
+  "IP:", "Quelle:", "Aktualisiert:", "QWeather", "Open-Meteo"
 };
 
 static const LocalizedStrings strings_fr = {
@@ -193,7 +201,8 @@ static const LocalizedStrings strings_fr = {
   "Point %d/5", "Annuler la calibration", "Calibration tactile terminée.",
   "Échec de la calibration; anciens réglages conservés.",
   "Son:", "Effet:", "Classic\nSoft\nDouble\nLow", "Configurer QWeather",
-  "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1."
+  "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1.",
+  "IP:", "Source :", "Mis à jour :", "QWeather", "Open-Meteo"
 };
 
 static const LocalizedStrings strings_tr = {
@@ -228,7 +237,8 @@ static const LocalizedStrings strings_tr = {
   "Nokta %d/5", "Kalibrasyonu iptal et", "Dokunmatik kalibrasyonu tamamlandı.",
   "Kalibrasyon başarısız; önceki ayarlar korundu.",
   "Ses:", "Efekt:", "Classic\nSoft\nDouble\nLow", "QWeather yapılandır",
-  "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1."
+  "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1.",
+  "IP:", "Kaynak:", "Güncellendi:", "QWeather", "Open-Meteo"
 };
 
 static const LocalizedStrings strings_sv = {
@@ -267,7 +277,8 @@ static const LocalizedStrings strings_sv = {
   "Punkt %d/5", "Avbryt kalibrering", "Pekskärmen är kalibrerad.",
   "Kalibrering misslyckades; tidigare inställningar behölls.",
   "Ljud:", "Effekt:", "Classic\nSoft\nDouble\nLow", "Konfigurera QWeather",
-  "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1."
+  "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1.",
+  "IP:", "Källa:", "Uppdaterad:", "QWeather", "Open-Meteo"
 };
 
 static const LocalizedStrings strings_it = {
@@ -301,7 +312,8 @@ static const LocalizedStrings strings_it = {
   "Punto %d/5", "Annulla calibrazione", "Calibrazione touch completata.",
   "Calibrazione fallita; impostazioni precedenti mantenute.",
   "Suono:", "Effetto:", "Classic\nSoft\nDouble\nLow", "Configura QWeather",
-  "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1."
+  "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1.",
+  "IP:", "Fonte:", "Aggiornato:", "QWeather", "Open-Meteo"
 };
 
 static const LocalizedStrings strings_zh = {
@@ -331,7 +343,8 @@ static const LocalizedStrings strings_zh = {
   "校验点 %d/5", "取消", "屏幕校验",
   "重调，设置",
   "Sound:", "效果:", "Classic\nSoft\nDouble\nLow", "和风天气API Key配置",
-  "正在配置天气 API Key。\n请连接 Aura 热点，访问 192.168.4.1 完成配置。"
+  "正在配置天气 API Key。\n请连接 Aura 热点，访问 192.168.4.1 完成配置。",
+  "IP:", "天气源:", "更新时间:", "和风天气", "Open-Meteo"
 };
 
 static const LocalizedStrings* get_strings(Language current_language) {
