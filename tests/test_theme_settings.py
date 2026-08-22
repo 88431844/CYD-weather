@@ -59,46 +59,51 @@ int main() {{
   const LocalizedStrings *languages[] = {
       &strings_en, &strings_es, &strings_de, &strings_fr,
       &strings_tr, &strings_sv, &strings_it, &strings_zh};
-  for (const LocalizedStrings *language : languages) {
-    if (!language->display_settings || !language->theme ||
-        !language->screen_orientation || !language->touch_rotation) return 1;
+  struct ExpectedStrings {
+    const char *settings[4];
+    const char *themes[THEME_COUNT];
+    const char *weather[10];
+  };
+  const ExpectedStrings expected[] = {
+      {{"Display", "Theme", "Orientation", "Correct touch"},
+       {"Deep Sea", "Clear Sky", "Rainforest", "Sunset", "High Contrast"},
+       {"Clear", "Partly cloudy", "Cloudy", "Fog", "Drizzle", "Light rain", "Heavy rain", "Sleet", "Snow", "Thunderstorm"}},
+      {{"Pantalla", "Tema", "Orientación", "Corregir toque"},
+       {"Mar profundo", "Cielo claro", "Selva", "Atardecer", "Alto contraste"},
+       {"Despejado", "Parcialmente nublado", "Nublado", "Niebla", "Llovizna", "Lluvia ligera", "Lluvia fuerte", "Aguanieve", "Nieve", "Tormenta"}},
+      {{"Anzeige", "Thema", "Ausrichtung", "Touch korrigieren"},
+       {"Tiefsee", "Klarer Himmel", "Regenwald", "Abendrot", "Hoher Kontrast"},
+       {"Klar", "Teilweise bewölkt", "Bewölkt", "Nebel", "Nieselregen", "Leichter Regen", "Starkregen", "Schneeregen", "Schnee", "Gewitter"}},
+      {{"Affichage", "Thème", "Orientation", "Corriger le tactile"},
+       {"Haute mer", "Ciel clair", "Forêt", "Crépuscule", "Contraste élevé"},
+       {"Dégagé", "Peu nuageux", "Nuageux", "Brouillard", "Bruine", "Pluie faible", "Forte pluie", "Grésil", "Neige", "Orage"}},
+      {{"Ekran", "Tema", "Yön", "Dokunmayı düzelt"},
+       {"Derin deniz", "Açık gökyüzü", "Yağmur ormanı", "Gün batımı", "Yüksek kontrast"},
+       {"Açık", "Parçalı bulutlu", "Bulutlu", "Sis", "Çiseleme", "Hafif yağmur", "Şiddetli yağmur", "Sulu kar", "Kar", "Fırtına"}},
+      {{"Skärm", "Tema", "Riktning", "Korrigera touch"},
+       {"Djuphav", "Klar himmel", "Regnskog", "Solnedgång", "Hög kontrast"},
+       {"Klart", "Delvis molnigt", "Molnigt", "Dimma", "Duggregn", "Lätt regn", "Kraftigt regn", "Snöblandat", "Snö", "Åska"}},
+      {{"Schermo", "Tema", "Orientamento", "Correggi tocco"},
+       {"Mare profondo", "Cielo sereno", "Foresta", "Tramonto", "Alto contrasto"},
+       {"Sereno", "Parzialmente nuvoloso", "Nuvoloso", "Nebbia", "Pioviggine", "Pioggia leggera", "Pioggia forte", "Nevischio", "Neve", "Temporale"}},
+      {{"显示设置", "主题", "屏幕方向", "自动校正触摸"},
+       {"深海", "晴空", "雨林", "晚霞", "高对比"},
+       {"晴", "多云", "阴", "雾", "毛毛雨", "小雨", "大雨", "雨夹雪", "雪", "雷雨"}},
+  };
+  for (int language = 0; language < 8; language++) {
+    const LocalizedStrings *actual = languages[language];
+    const char *settings[] = {
+        actual->display_settings, actual->theme,
+        actual->screen_orientation, actual->touch_rotation};
+    for (int index = 0; index < 4; index++) {
+      if (std::strcmp(settings[index], expected[language].settings[index])) return 10 + language;
+    }
     for (int index = 0; index < THEME_COUNT; index++) {
-      if (!language->theme_names[index] || !language->theme_names[index][0]) return 2;
+      if (std::strcmp(actual->theme_names[index], expected[language].themes[index])) return 20 + language;
     }
     for (int index = 0; index < 10; index++) {
-      if (!language->weather_conditions[index] ||
-          !language->weather_conditions[index][0]) return 3;
+      if (std::strcmp(actual->weather_conditions[index], expected[language].weather[index])) return 30 + language;
     }
-  }
-  const char *english_themes[] = {
-      "Deep Sea", "Clear Sky", "Rainforest", "Sunset", "High Contrast"};
-  const char *english_weather[] = {
-      "Clear", "Partly cloudy", "Cloudy", "Fog", "Drizzle",
-      "Light rain", "Heavy rain", "Sleet", "Snow", "Thunderstorm"};
-  const char *chinese_themes[] = {"深海", "晴空", "雨林", "晚霞", "高对比"};
-  const char *chinese_weather[] = {
-      "晴", "多云", "阴", "雾", "毛毛雨", "小雨", "大雨", "雨夹雪", "雪", "雷雨"};
-  const char *english_settings[] = {
-      "Display", "Theme", "Orientation", "Correct touch"};
-  const char *chinese_settings[] = {
-      "显示设置", "主题", "屏幕方向", "自动校正触摸"};
-  const char *english_actual[] = {
-      strings_en.display_settings, strings_en.theme,
-      strings_en.screen_orientation, strings_en.touch_rotation};
-  const char *chinese_actual[] = {
-      strings_zh.display_settings, strings_zh.theme,
-      strings_zh.screen_orientation, strings_zh.touch_rotation};
-  for (int index = 0; index < 4; index++) {
-    if (std::strcmp(english_actual[index], english_settings[index])) return 4;
-    if (std::strcmp(chinese_actual[index], chinese_settings[index])) return 5;
-  }
-  for (int index = 0; index < THEME_COUNT; index++) {
-    if (std::strcmp(strings_en.theme_names[index], english_themes[index]) ||
-        std::strcmp(strings_zh.theme_names[index], chinese_themes[index])) return 6;
-  }
-  for (int index = 0; index < 10; index++) {
-    if (std::strcmp(strings_en.weather_conditions[index], english_weather[index]) ||
-        std::strcmp(strings_zh.weather_conditions[index], chinese_weather[index])) return 7;
   }
   return 0;
 ''')
