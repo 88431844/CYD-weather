@@ -123,7 +123,7 @@ class LandscapeWeatherUiTests(unittest.TestCase):
             "lv_obj_set_pos(landscape_current_condition, 84, 4);", header
         )
         self.assertIn("landscape_current_condition, get_font_20()", header)
-        self.assertIn("lv_obj_set_size(lbl_today_feels_like, 100, 16);", header)
+        self.assertIn("lv_obj_set_size(lbl_today_feels_like, 230, 16);", header)
         self.assertIn("lv_obj_set_pos(lbl_today_feels_like, 84, 32);", header)
 
     def test_landscape_update_status_omits_provider_and_ip(self):
@@ -134,10 +134,9 @@ class LandscapeWeatherUiTests(unittest.TestCase):
         self.assertIn("if (lbl_network_status)", update)
         self.assertIn("if (lbl_update_status)", update)
         self.assertIn("geometry_for_rotation(current_rotation).landscape", update)
+        self.assertIn('compact_updated.replace(":", ".");', update)
         self.assertIn(
-            'lv_label_set_text_fmt(lbl_update_status, "%s %s",\n'
-            "                          strings->weather_updated, compact_updated.c_str());",
-            update,
+            "lv_label_set_text(lbl_update_status, compact_updated.c_str());", update
         )
         self.assertIn(
             'lv_label_set_text_fmt(lbl_update_status, "%s %s",\n'
