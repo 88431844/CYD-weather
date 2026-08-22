@@ -2347,7 +2347,7 @@ static void create_landscape_forecast_columns(lv_obj_t *scr) {
         landscape_hourly_icons[i], x + 11, LANDSCAPE_COLUMN_Y + 14);
 
     landscape_hourly_conditions[i] = lv_label_create(scr);
-    lv_obj_set_size(landscape_hourly_conditions[i], 42, 28);
+    lv_obj_set_size(landscape_hourly_conditions[i], 42, 32);
     lv_obj_set_pos(
         landscape_hourly_conditions[i], x, LANDSCAPE_COLUMN_Y + 34);
     lv_label_set_long_mode(

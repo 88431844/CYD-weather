@@ -9,6 +9,9 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 WEATHER = (ROOT / "aura" / "weather.ino").read_text(encoding="utf-8")
 FORECAST_MODEL = (ROOT / "aura" / "forecast_model.h").read_text(encoding="utf-8")
+CHINESE_FONT_12 = (ROOT / "aura" / "lv_font_noto_sans_sc_12.c").read_text(
+    encoding="utf-8"
+)
 
 
 def function_body(signature: str, next_signature: str) -> str:
@@ -175,9 +178,38 @@ class LandscapeWeatherUiTests(unittest.TestCase):
             r"lv_label_set_long_mode\(\s*landscape_hourly_conditions\[i\],\s*LV_LABEL_LONG_DOT\)",
         )
         self.assertIn(
-            "lv_obj_set_size(landscape_hourly_conditions[i], 42, 28)",
+            "lv_obj_set_size(landscape_hourly_conditions[i], 42, 32)",
             columns,
         )
+
+    def test_hourly_condition_label_fits_two_chinese_font_lines(self):
+        columns = function_body(
+            "static void create_landscape_forecast_columns(lv_obj_t *scr) {",
+            "static void create_landscape_ui",
+        )
+        line_height = int(
+            re.search(r"\.line_height\s*=\s*(\d+)", CHINESE_FONT_12).group(1)
+        )
+        label_size = re.search(
+            r"lv_obj_set_size\(landscape_hourly_conditions\[i\], "
+            r"(\d+), (\d+)\)",
+            columns,
+        )
+        label_position = re.search(
+            r"lv_obj_set_pos\(\s*landscape_hourly_conditions\[i\], x, "
+            r"LANDSCAPE_COLUMN_Y \+ (\d+)\)",
+            columns,
+        )
+        column_y = int(
+            re.search(
+                r"LANDSCAPE_COLUMN_Y\s*=\s*(\d+)", WEATHER
+            ).group(1)
+        )
+        label_height = int(label_size.group(2))
+        label_y = column_y + int(label_position.group(1))
+
+        self.assertGreaterEqual(label_height, line_height * 2)
+        self.assertLessEqual(label_y + label_height, 240)
 
     def test_renderer_converts_chart_values_ranges_and_labels_to_same_unit(self):
         for contract in (
