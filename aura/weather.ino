@@ -274,6 +274,13 @@ LV_IMG_DECLARE(image_wintry_mix_rain_snow);
 void create_ui();
 static lv_color_t theme_color(uint32_t rgb);
 static void apply_root_theme(lv_obj_t *root);
+static void apply_button_theme(lv_obj_t *button, bool destructive);
+static void apply_slider_theme(lv_obj_t *slider);
+static void apply_switch_theme(lv_obj_t *switch_obj);
+static void apply_dropdown_theme(lv_obj_t *dropdown);
+static void apply_textarea_theme(lv_obj_t *textarea);
+static void apply_keyboard_theme(lv_obj_t *keyboard);
+static void apply_msgbox_theme(lv_obj_t *mbox);
 static void create_portrait_ui(lv_obj_t *scr);
 void fetch_and_update_weather();
 void create_settings_window();
@@ -902,7 +909,6 @@ static void open_qweather_config_portal() {
   }
 
   const LocalizedStrings* strings = get_strings(current_language);
-  const ThemePalette &palette = theme_palette(current_theme);
   qweather_portal_active = true;
   qweather_portal_start_requested = true;
   qweather_portal_params_saved = false;
@@ -919,11 +925,8 @@ static void open_qweather_config_portal() {
   lv_obj_add_event_cb(cancel, qweather_cancel_event_cb, LV_EVENT_CLICKED, nullptr);
   lv_obj_set_width(qweather_portal_prompt, 230);
   lv_obj_center(qweather_portal_prompt);
-  lv_obj_set_style_bg_color(qweather_portal_prompt, theme_color(palette.panel), LV_PART_MAIN);
-  lv_obj_set_style_text_color(qweather_portal_prompt, theme_color(palette.text), LV_PART_MAIN);
-  lv_obj_set_style_border_width(qweather_portal_prompt, 2, LV_PART_MAIN);
-  lv_obj_set_style_border_color(qweather_portal_prompt, theme_color(palette.grid), LV_PART_MAIN);
-  lv_obj_set_style_border_opa(qweather_portal_prompt, LV_OPA_COVER, LV_PART_MAIN);
+  apply_msgbox_theme(qweather_portal_prompt);
+  apply_button_theme(cancel, false);
   lv_obj_set_style_radius(qweather_portal_prompt, 4, LV_PART_MAIN);
 }
 
@@ -1164,6 +1167,156 @@ static void apply_root_theme(lv_obj_t *root) {
   lv_obj_set_style_text_color(root, theme_color(palette.text), LV_PART_MAIN);
 }
 
+static void apply_control_part(lv_obj_t *obj, lv_style_selector_t selector,
+                               uint32_t background, uint32_t text,
+                               uint32_t border) {
+  if (!obj) return;
+  lv_obj_set_style_bg_color(obj, theme_color(background), selector);
+  lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, selector);
+  lv_obj_set_style_text_color(obj, theme_color(text), selector);
+  lv_obj_set_style_border_color(obj, theme_color(border), selector);
+  lv_obj_set_style_border_opa(obj, LV_OPA_COVER, selector);
+  lv_obj_set_style_border_width(obj, 1, selector);
+}
+
+static void apply_button_theme(lv_obj_t *button, bool destructive) {
+  const ThemePalette &palette = theme_palette(current_theme);
+  const uint32_t normal_background =
+      destructive ? palette.high_temperature : palette.panel;
+  const uint32_t normal_text =
+      destructive ? palette.background : palette.text;
+  apply_control_part(button, LV_PART_MAIN | LV_STATE_DEFAULT,
+                     normal_background, normal_text, palette.grid);
+  apply_control_part(button, LV_PART_MAIN | LV_STATE_PRESSED,
+                     palette.accent, palette.background, palette.accent);
+  apply_control_part(button, LV_PART_MAIN | LV_STATE_CHECKED,
+                     palette.accent, palette.background, palette.accent);
+  apply_control_part(button,
+                     LV_PART_MAIN | LV_STATE_CHECKED | LV_STATE_PRESSED,
+                     palette.low_temperature, palette.background,
+                     palette.accent);
+  apply_control_part(button, LV_PART_MAIN | LV_STATE_DISABLED,
+                     palette.grid, palette.muted, palette.grid);
+}
+
+static void apply_slider_theme(lv_obj_t *slider) {
+  const ThemePalette &palette = theme_palette(current_theme);
+  apply_control_part(slider, LV_PART_MAIN | LV_STATE_DEFAULT,
+                     palette.grid, palette.text, palette.grid);
+  apply_control_part(slider, LV_PART_INDICATOR | LV_STATE_DEFAULT,
+                     palette.accent, palette.background, palette.accent);
+  apply_control_part(slider, LV_PART_INDICATOR | LV_STATE_DISABLED,
+                     palette.muted, palette.muted, palette.grid);
+  apply_control_part(slider, LV_PART_KNOB | LV_STATE_DEFAULT,
+                     palette.low_temperature, palette.background,
+                     palette.low_temperature);
+  apply_control_part(slider, LV_PART_KNOB | LV_STATE_PRESSED,
+                     palette.high_temperature, palette.background,
+                     palette.high_temperature);
+  apply_control_part(slider, LV_PART_KNOB | LV_STATE_DISABLED,
+                     palette.muted, palette.background, palette.grid);
+}
+
+static void apply_switch_theme(lv_obj_t *switch_obj) {
+  const ThemePalette &palette = theme_palette(current_theme);
+  apply_control_part(switch_obj, LV_PART_MAIN | LV_STATE_DEFAULT,
+                     palette.panel, palette.text, palette.grid);
+  apply_control_part(switch_obj, LV_PART_MAIN | LV_STATE_DISABLED,
+                     palette.grid, palette.muted, palette.grid);
+  apply_control_part(switch_obj, LV_PART_INDICATOR | LV_STATE_DEFAULT,
+                     palette.grid, palette.muted, palette.grid);
+  apply_control_part(switch_obj, LV_PART_INDICATOR | LV_STATE_CHECKED,
+                     palette.accent, palette.background, palette.accent);
+  apply_control_part(switch_obj,
+                     LV_PART_INDICATOR | LV_STATE_CHECKED | LV_STATE_PRESSED,
+                     palette.low_temperature, palette.background,
+                     palette.accent);
+  apply_control_part(switch_obj, LV_PART_KNOB | LV_STATE_DEFAULT,
+                     palette.text, palette.background, palette.grid);
+  apply_control_part(switch_obj, LV_PART_KNOB | LV_STATE_CHECKED,
+                     palette.background, palette.text, palette.accent);
+  apply_control_part(switch_obj, LV_PART_KNOB | LV_STATE_DISABLED,
+                     palette.muted, palette.background, palette.grid);
+}
+
+static void apply_dropdown_theme(lv_obj_t *dropdown) {
+  const ThemePalette &palette = theme_palette(current_theme);
+  apply_control_part(dropdown, LV_PART_MAIN | LV_STATE_DEFAULT,
+                     palette.panel, palette.text, palette.grid);
+  apply_control_part(dropdown, LV_PART_MAIN | LV_STATE_PRESSED,
+                     palette.grid, palette.text, palette.accent);
+  apply_control_part(dropdown, LV_PART_MAIN | LV_STATE_CHECKED,
+                     palette.panel, palette.text, palette.accent);
+  apply_control_part(dropdown, LV_PART_MAIN | LV_STATE_DISABLED,
+                     palette.grid, palette.muted, palette.grid);
+  apply_control_part(dropdown, LV_PART_INDICATOR | LV_STATE_DEFAULT,
+                     palette.panel, palette.accent, palette.grid);
+  apply_control_part(dropdown, LV_PART_INDICATOR | LV_STATE_CHECKED,
+                     palette.panel, palette.high_temperature,
+                     palette.accent);
+
+  lv_obj_t *list = lv_dropdown_get_list(dropdown);
+  apply_control_part(list, LV_PART_MAIN | LV_STATE_DEFAULT,
+                     palette.background, palette.text, palette.grid);
+  apply_control_part(list, LV_PART_SELECTED | LV_STATE_CHECKED,
+                     palette.accent, palette.background, palette.accent);
+  apply_control_part(list, LV_PART_SELECTED | LV_STATE_PRESSED,
+                     palette.high_temperature, palette.background,
+                     palette.high_temperature);
+  apply_control_part(list,
+                     LV_PART_SELECTED | LV_STATE_CHECKED | LV_STATE_PRESSED,
+                     palette.low_temperature, palette.background,
+                     palette.accent);
+  apply_control_part(list, LV_PART_SELECTED | LV_STATE_DISABLED,
+                     palette.grid, palette.muted, palette.grid);
+}
+
+static void apply_textarea_theme(lv_obj_t *textarea) {
+  const ThemePalette &palette = theme_palette(current_theme);
+  apply_control_part(textarea, LV_PART_MAIN | LV_STATE_DEFAULT,
+                     palette.panel, palette.text, palette.grid);
+  apply_control_part(textarea, LV_PART_MAIN | LV_STATE_FOCUSED,
+                     palette.panel, palette.text, palette.accent);
+  apply_control_part(textarea, LV_PART_MAIN | LV_STATE_DISABLED,
+                     palette.grid, palette.muted, palette.grid);
+  lv_obj_set_style_border_color(textarea, theme_color(palette.accent),
+                                LV_PART_CURSOR | LV_STATE_FOCUSED);
+}
+
+static void apply_keyboard_theme(lv_obj_t *keyboard) {
+  const ThemePalette &palette = theme_palette(current_theme);
+  apply_control_part(keyboard, LV_PART_MAIN | LV_STATE_DEFAULT,
+                     palette.background, palette.text, palette.grid);
+  apply_control_part(keyboard, LV_PART_ITEMS | LV_STATE_DEFAULT,
+                     palette.panel, palette.text, palette.grid);
+  apply_control_part(keyboard, LV_PART_ITEMS | LV_STATE_PRESSED,
+                     palette.accent, palette.background, palette.accent);
+  apply_control_part(keyboard, LV_PART_ITEMS | LV_STATE_CHECKED,
+                     palette.low_temperature, palette.background,
+                     palette.low_temperature);
+  apply_control_part(keyboard,
+                     LV_PART_ITEMS | LV_STATE_CHECKED | LV_STATE_PRESSED,
+                     palette.high_temperature, palette.background,
+                     palette.accent);
+  apply_control_part(keyboard, LV_PART_ITEMS | LV_STATE_DISABLED,
+                     palette.grid, palette.muted, palette.grid);
+}
+
+static void apply_msgbox_theme(lv_obj_t *mbox) {
+  const ThemePalette &palette = theme_palette(current_theme);
+  apply_control_part(mbox, LV_PART_MAIN | LV_STATE_DEFAULT,
+                     palette.panel, palette.text, palette.grid);
+  apply_control_part(lv_msgbox_get_header(mbox),
+                     LV_PART_MAIN | LV_STATE_DEFAULT,
+                     palette.panel, palette.text, palette.grid);
+  apply_control_part(lv_msgbox_get_content(mbox),
+                     LV_PART_MAIN | LV_STATE_DEFAULT,
+                     palette.panel, palette.text, palette.grid);
+  apply_control_part(lv_msgbox_get_footer(mbox),
+                     LV_PART_MAIN | LV_STATE_DEFAULT,
+                     palette.panel, palette.text, palette.grid);
+}
+
 void wifi_splash_screen() {
   lv_obj_t *scr = lv_scr_act();
   lv_obj_clean(scr);
@@ -1192,18 +1345,14 @@ static void create_portrait_ui(lv_obj_t *scr) {
   lv_obj_add_flag(img_today_icon, LV_OBJ_FLAG_HIDDEN);
   lv_obj_align(img_today_icon, LV_ALIGN_TOP_MID, -64, 12);
 
-  static lv_style_t default_label_style;
-  lv_style_init(&default_label_style);
-  lv_style_set_text_color(&default_label_style, theme_color(palette.text));
-  lv_style_set_text_opa(&default_label_style, LV_OPA_COVER);
-
   const LocalizedStrings* strings = get_strings(current_language);
 
   lbl_today_temp = lv_label_create(scr);
   lv_label_set_text(lbl_today_temp, strings->temp_placeholder);
   lv_obj_set_style_text_font(lbl_today_temp, get_font_42(), LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_color(lbl_today_temp, theme_color(palette.text), LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_opa(lbl_today_temp, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_align(lbl_today_temp, LV_ALIGN_TOP_MID, 45, 25);
-  lv_obj_add_style(lbl_today_temp, &default_label_style, LV_PART_MAIN | LV_STATE_DEFAULT);
 
   lbl_today_feels_like = lv_label_create(scr);
   lv_label_set_text(lbl_today_feels_like, strings->feels_like_temp);
@@ -1255,13 +1404,14 @@ static void create_portrait_ui(lv_obj_t *scr) {
     img_daily[i] = lv_img_create(box_daily);
 
     lv_label_set_text(lbl_daily_day[i], "--");
-    lv_obj_add_style(lbl_daily_day[i], &default_label_style, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(lbl_daily_day[i], theme_color(palette.text), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_opa(lbl_daily_day[i], LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(lbl_daily_day[i], get_font_16(), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_align(lbl_daily_day[i], LV_ALIGN_TOP_LEFT, 2, i * 24);
 
     lv_label_set_text(lbl_daily_high[i], "--");
-    lv_obj_add_style(lbl_daily_high[i], &default_label_style, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(lbl_daily_high[i], theme_color(palette.high_temperature), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_opa(lbl_daily_high[i], LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(lbl_daily_high[i], get_font_16(), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_align(lbl_daily_high[i], LV_ALIGN_TOP_RIGHT, 0, i * 24);
 
@@ -1295,13 +1445,14 @@ static void create_portrait_ui(lv_obj_t *scr) {
     img_hourly[i] = lv_img_create(box_hourly);
 
     lv_label_set_text(lbl_hourly[i], "--");
-    lv_obj_add_style(lbl_hourly[i], &default_label_style, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(lbl_hourly[i], theme_color(palette.text), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_opa(lbl_hourly[i], LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(lbl_hourly[i], get_font_16(), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_align(lbl_hourly[i], LV_ALIGN_TOP_LEFT, 2, i * 24);
 
     lv_label_set_text(lbl_hourly_temp[i], "--");
-    lv_obj_add_style(lbl_hourly_temp[i], &default_label_style, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(lbl_hourly_temp[i], theme_color(palette.high_temperature), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_opa(lbl_hourly_temp[i], LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(lbl_hourly_temp[i], get_font_16(), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_align(lbl_hourly_temp[i], LV_ALIGN_TOP_RIGHT, 0, i * 24);
 
@@ -1339,7 +1490,6 @@ void create_ui() {
 }
 
 void populate_results_dropdown() {
-  const ThemePalette &palette = theme_palette(current_theme);
   dd_opts[0] = '\0';
   for (JsonObject item : geoResults) {
     strcat(dd_opts, item["name"].as<const char *>());
@@ -1354,9 +1504,7 @@ void populate_results_dropdown() {
   if (geoResults.size() > 0) {
     lv_dropdown_set_options_static(results_dd, dd_opts);
     lv_obj_add_flag(results_dd, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_style_bg_color(btn_close_loc, theme_color(palette.accent), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_opa(btn_close_loc, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(btn_close_loc, theme_color(palette.low_temperature), LV_PART_MAIN | LV_STATE_PRESSED);
+    lv_obj_remove_state(btn_close_loc, LV_STATE_DISABLED);
     lv_obj_add_flag(btn_close_loc, LV_OBJ_FLAG_CLICKABLE);
   }
 }
@@ -1442,7 +1590,6 @@ static void calibration_cancel_event_cb(lv_event_t *e) {
 }
 
 static void finish_touch_calibration(bool success) {
-  const ThemePalette &palette = theme_palette(current_theme);
   if (success) {
     TouchScreenPoint targets[5];
     for (uint8_t i = 0; i < 5; i++) targets[i] = TOUCH_CALIBRATION_TARGETS[i];
@@ -1479,13 +1626,11 @@ static void finish_touch_calibration(bool success) {
   lv_obj_t *text = lv_msgbox_add_text(
       mbox, success ? strings->calibration_success : strings->calibration_failed);
   lv_obj_set_style_text_font(text, get_font_12(), 0);
-  lv_msgbox_add_close_button(mbox);
+  lv_obj_t *close = lv_msgbox_add_close_button(mbox);
   lv_obj_set_width(mbox, 230);
   lv_obj_center(mbox);
-  lv_obj_set_style_bg_color(mbox, theme_color(palette.panel), LV_PART_MAIN);
-  lv_obj_set_style_text_color(mbox, theme_color(palette.text), LV_PART_MAIN);
-  lv_obj_set_style_border_color(mbox, theme_color(palette.grid), LV_PART_MAIN);
-  lv_obj_set_style_border_width(mbox, 2, LV_PART_MAIN);
+  apply_msgbox_theme(mbox);
+  apply_button_theme(close, false);
 }
 
 static void calibration_timer_cb(lv_timer_t *timer) {
@@ -1559,10 +1704,7 @@ static void start_touch_calibration() {
 
   lv_obj_t *cancel = lv_btn_create(calibration_overlay);
   lv_obj_set_size(cancel, 108, 32);
-  lv_obj_set_style_bg_color(cancel, theme_color(palette.panel), LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_text_color(cancel, theme_color(palette.text), LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_border_color(cancel, theme_color(palette.grid), LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_border_width(cancel, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
+  apply_button_theme(cancel, false);
   lv_obj_align(cancel, LV_ALIGN_BOTTOM_MID, 0, -44);
   lv_obj_add_event_cb(cancel, calibration_cancel_event_cb, LV_EVENT_CLICKED, nullptr);
   lv_obj_t *cancel_label = lv_label_create(cancel);
@@ -1596,7 +1738,6 @@ void hourly_cb(lv_event_t *e) {
 static void reset_wifi_event_handler(lv_event_t *e) {
   play_click_sound();
   const LocalizedStrings* strings = get_strings(current_language);
-  const ThemePalette &palette = theme_palette(current_theme);
   lv_obj_t *mbox = lv_msgbox_create(lv_scr_act());
   lv_obj_t *title = lv_msgbox_add_title(mbox, strings->reset);
   lv_obj_set_style_margin_left(title, 10, 0);
@@ -1604,25 +1745,20 @@ static void reset_wifi_event_handler(lv_event_t *e) {
 
   lv_obj_t *text = lv_msgbox_add_text(mbox, strings->reset_confirmation);
   lv_obj_set_style_text_font(text, get_font_12(), 0);
-  lv_msgbox_add_close_button(mbox);
+  lv_obj_t *close = lv_msgbox_add_close_button(mbox);
 
   lv_obj_t *btn_no = lv_msgbox_add_footer_button(mbox, strings->cancel);
   lv_obj_set_style_text_font(btn_no, get_font_12(), 0);
   lv_obj_t *btn_yes = lv_msgbox_add_footer_button(mbox, strings->reset);
   lv_obj_set_style_text_font(btn_yes, get_font_12(), 0);
 
-  lv_obj_set_style_bg_color(btn_yes, theme_color(palette.high_temperature), LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_bg_color(btn_yes, theme_color(palette.accent), LV_PART_MAIN | LV_STATE_PRESSED);
-  lv_obj_set_style_text_color(btn_yes, theme_color(palette.background), LV_PART_MAIN | LV_STATE_DEFAULT);
-
   lv_obj_set_width(mbox, 230);
   lv_obj_center(mbox);
 
-  lv_obj_set_style_bg_color(mbox, theme_color(palette.panel), LV_PART_MAIN);
-  lv_obj_set_style_text_color(mbox, theme_color(palette.text), LV_PART_MAIN);
-  lv_obj_set_style_border_width(mbox, 2, LV_PART_MAIN);
-  lv_obj_set_style_border_color(mbox, theme_color(palette.grid), LV_PART_MAIN);
-  lv_obj_set_style_border_opa(mbox, LV_OPA_COVER,   LV_PART_MAIN);
+  apply_msgbox_theme(mbox);
+  apply_button_theme(close, false);
+  apply_button_theme(btn_no, false);
+  apply_button_theme(btn_yes, true);
   lv_obj_set_style_radius(mbox, 4, LV_PART_MAIN);
 
   lv_obj_add_event_cb(btn_yes, reset_confirm_yes_cb, LV_EVENT_CLICKED, mbox);
@@ -1681,6 +1817,7 @@ void create_location_dialog() {
   loc_ta = lv_textarea_create(cont);
   lv_textarea_set_one_line(loc_ta, true);
   lv_textarea_set_placeholder_text(loc_ta, strings->city_placeholder);
+  apply_textarea_theme(loc_ta);
   lv_obj_set_width(loc_ta, 170);
   lv_obj_align_to(loc_ta, lbl, LV_ALIGN_OUT_RIGHT_MID, 5, 0);
 
@@ -1700,6 +1837,7 @@ void create_location_dialog() {
 
   lv_obj_t *list = lv_dropdown_get_list(results_dd);
   lv_obj_set_style_text_font(list, get_font_14(), LV_PART_MAIN | LV_STATE_DEFAULT);
+  apply_dropdown_theme(results_dd);
 
   lv_dropdown_set_options(results_dd, "");
   lv_obj_clear_flag(results_dd, LV_OBJ_FLAG_CLICKABLE);
@@ -1709,9 +1847,8 @@ void create_location_dialog() {
   lv_obj_align(btn_close_loc, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
 
   lv_obj_add_event_cb(btn_close_loc, location_save_event_cb, LV_EVENT_CLICKED, &geoResults);
-  lv_obj_set_style_bg_color(btn_close_loc, theme_color(palette.grid), LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_bg_opa(btn_close_loc, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_bg_color(btn_close_loc, theme_color(palette.muted), LV_PART_MAIN | LV_STATE_PRESSED);
+  apply_button_theme(btn_close_loc, false);
+  lv_obj_add_state(btn_close_loc, LV_STATE_DISABLED);
   lv_obj_clear_flag(btn_close_loc, LV_OBJ_FLAG_CLICKABLE);
 
   lv_obj_t *lbl_close = lv_label_create(btn_close_loc);
@@ -1721,6 +1858,7 @@ void create_location_dialog() {
 
   lv_obj_t *btn_cancel_loc = lv_btn_create(cont);
   lv_obj_set_size(btn_cancel_loc, 80, 40);
+  apply_button_theme(btn_cancel_loc, false);
   lv_obj_align_to(btn_cancel_loc, btn_close_loc, LV_ALIGN_OUT_LEFT_MID, -5, 0);
   lv_obj_add_event_cb(btn_cancel_loc, location_cancel_event_cb, LV_EVENT_CLICKED, &geoResults);
 
@@ -1755,6 +1893,7 @@ void create_settings_window() {
 
   btn_close_obj = lv_btn_create(header);
   lv_obj_set_size(btn_close_obj, 42, LV_PCT(100));
+  apply_button_theme(btn_close_obj, false);
   lv_obj_set_style_bg_opa(btn_close_obj, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_border_width(btn_close_obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_add_event_cb(btn_close_obj, settings_event_handler, LV_EVENT_PRESSED, NULL);
@@ -1805,6 +1944,7 @@ void create_settings_window() {
   uint32_t saved_b = prefs.getUInt("brightness", 128);
   lv_slider_set_value(slider, saved_b, LV_ANIM_OFF);
   lv_obj_set_width(slider, 100);
+  apply_slider_theme(slider);
   lv_obj_align(slider, LV_ALIGN_RIGHT_MID, 0, 0);
 
   lv_obj_add_event_cb(slider, [](lv_event_t *e){
@@ -1820,6 +1960,7 @@ void create_settings_window() {
   lv_label_set_text(lbl_night_mode, strings->use_night_mode);
   style_label(lbl_night_mode);
   night_mode_switch = lv_switch_create(night_row);
+  apply_switch_theme(night_mode_switch);
   lv_obj_align(night_mode_switch, LV_ALIGN_RIGHT_MID, 0, 0);
   if (use_night_mode) lv_obj_add_state(night_mode_switch, LV_STATE_CHECKED);
   lv_obj_add_event_cb(night_mode_switch, settings_event_handler, LV_EVENT_VALUE_CHANGED, NULL);
@@ -1830,6 +1971,7 @@ void create_settings_window() {
   lv_label_set_text(lbl_u, strings->use_fahrenheit);
   style_label(lbl_u);
   unit_switch = lv_switch_create(fahrenheit_row);
+  apply_switch_theme(unit_switch);
   lv_obj_align(unit_switch, LV_ALIGN_RIGHT_MID, 0, 0);
   if (use_fahrenheit) lv_obj_add_state(unit_switch, LV_STATE_CHECKED);
   lv_obj_add_event_cb(unit_switch, settings_event_handler, LV_EVENT_VALUE_CHANGED, NULL);
@@ -1840,6 +1982,7 @@ void create_settings_window() {
   lv_label_set_text(lbl_24hr, strings->use_24hr);
   style_label(lbl_24hr);
   clock_24hr_switch = lv_switch_create(clock_row);
+  apply_switch_theme(clock_24hr_switch);
   lv_obj_align(clock_24hr_switch, LV_ALIGN_RIGHT_MID, 0, 0);
   if (use_24_hour) lv_obj_add_state(clock_24hr_switch, LV_STATE_CHECKED);
   lv_obj_add_event_cb(clock_24hr_switch, settings_event_handler, LV_EVENT_VALUE_CHANGED, NULL);
@@ -1872,6 +2015,7 @@ void create_settings_window() {
   lv_obj_set_style_text_font(language_dropdown, get_font_12(), LV_PART_SELECTED | LV_STATE_DEFAULT);
   lv_obj_t *list = lv_dropdown_get_list(language_dropdown);
   lv_obj_set_style_text_font(list, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
+  apply_dropdown_theme(language_dropdown);
   lv_obj_align(language_dropdown, LV_ALIGN_RIGHT_MID, 0, 0);
   lv_obj_add_event_cb(language_dropdown, settings_event_handler, LV_EVENT_VALUE_CHANGED, NULL);
 
@@ -1881,6 +2025,7 @@ void create_settings_window() {
   lv_label_set_text(lbl_sound, strings->sound_enabled);
   style_label(lbl_sound);
   sound_enabled_switch = lv_switch_create(sound_row);
+  apply_switch_theme(sound_enabled_switch);
   lv_obj_align(sound_enabled_switch, LV_ALIGN_RIGHT_MID, 0, 0);
   if (sound_enabled) lv_obj_add_state(sound_enabled_switch, LV_STATE_CHECKED);
   lv_obj_add_event_cb(sound_enabled_switch, settings_event_handler, LV_EVENT_VALUE_CHANGED, NULL);
@@ -1898,12 +2043,14 @@ void create_settings_window() {
   lv_obj_set_style_text_font(sound_effect_dropdown, get_font_12(), LV_PART_SELECTED | LV_STATE_DEFAULT);
   lv_obj_t *effect_list = lv_dropdown_get_list(sound_effect_dropdown);
   lv_obj_set_style_text_font(effect_list, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
+  apply_dropdown_theme(sound_effect_dropdown);
   lv_obj_align(sound_effect_dropdown, LV_ALIGN_RIGHT_MID, 0, 0);
   lv_obj_add_event_cb(sound_effect_dropdown, settings_event_handler, LV_EVENT_VALUE_CHANGED, NULL);
 
   // QWeather configuration portal
   lv_obj_t *qweather_row = create_row(38);
   qweather_config_btn = lv_btn_create(qweather_row);
+  apply_button_theme(qweather_config_btn, false);
   lv_obj_set_size(qweather_config_btn, 204, 34);
   lv_obj_add_event_cb(qweather_config_btn, settings_event_handler, LV_EVENT_CLICKED, NULL);
   lv_obj_t *lbl_qweather = lv_label_create(qweather_config_btn);
@@ -1914,6 +2061,7 @@ void create_settings_window() {
   // Touch calibration button
   lv_obj_t *calibration_row = create_row(38);
   touch_calibration_btn = lv_btn_create(calibration_row);
+  apply_button_theme(touch_calibration_btn, false);
   lv_obj_set_size(touch_calibration_btn, 204, 34);
   lv_obj_add_event_cb(touch_calibration_btn, settings_event_handler, LV_EVENT_CLICKED, NULL);
   lv_obj_t *lbl_calibrate = lv_label_create(touch_calibration_btn);
@@ -1924,6 +2072,7 @@ void create_settings_window() {
   // Location search button
   lv_obj_t *location_button_row = create_row(38);
   lv_obj_t *btn_change_loc = lv_btn_create(location_button_row);
+  apply_button_theme(btn_change_loc, false);
   lv_obj_set_size(btn_change_loc, 204, 34);
   lv_obj_add_event_cb(btn_change_loc, change_location_event_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *lbl_chg = lv_label_create(btn_change_loc);
@@ -1935,6 +2084,7 @@ void create_settings_window() {
   if (!kb) {
     kb = lv_keyboard_create(lv_scr_act());
     lv_keyboard_set_mode(kb, LV_KEYBOARD_MODE_TEXT_LOWER);
+    apply_keyboard_theme(kb);
     lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_event_cb(kb, kb_event_cb, LV_EVENT_READY, NULL);
     lv_obj_add_event_cb(kb, kb_event_cb, LV_EVENT_CANCEL, NULL);
@@ -1943,9 +2093,7 @@ void create_settings_window() {
   // Reset WiFi button
   lv_obj_t *reset_row = create_row(38);
   lv_obj_t *btn_reset = lv_btn_create(reset_row);
-  lv_obj_set_style_bg_color(btn_reset, theme_color(palette.high_temperature), LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_bg_color(btn_reset, theme_color(palette.accent), LV_PART_MAIN | LV_STATE_PRESSED);
-  lv_obj_set_style_text_color(btn_reset, theme_color(palette.background), LV_PART_MAIN | LV_STATE_DEFAULT);
+  apply_button_theme(btn_reset, true);
   lv_obj_set_size(btn_reset, 204, 34);
 
   lv_obj_add_event_cb(btn_reset, reset_wifi_event_handler, LV_EVENT_CLICKED, nullptr);
