@@ -2164,7 +2164,6 @@ static void fetch_open_meteo_weather() {
           weather_codes.size() >= FORECAST_POINT_COUNT &&
           hours.size() >= FORECAST_POINT_COUNT &&
           hourly_temps.size() >= FORECAST_POINT_COUNT &&
-          precipitation_probabilities.size() >= FORECAST_POINT_COUNT &&
           hourly_weather_codes.size() >= FORECAST_POINT_COUNT &&
           hourly_is_day.size() >= FORECAST_POINT_COUNT;
 
@@ -2201,6 +2200,7 @@ static void fetch_open_meteo_weather() {
           candidate.hourly[i].hour = static_cast<uint8_t>(atoi(date_time + 11));
           candidate.hourly[i].is_day = hourly_is_day[i].as<int>() != 0;
           candidate.hourly[i].has_precipitation =
+              i < precipitation_probabilities.size() &&
               !precipitation_probabilities[i].isNull();
           if (candidate.hourly[i].has_precipitation) {
             candidate.hourly[i].precipitation_probability =

@@ -77,6 +77,33 @@ class QWeatherIntegrationTests(unittest.TestCase):
         )
         self.assertIn("!precipitation_probabilities[i].isNull()", parser)
 
+    def test_open_meteo_missing_precipitation_array_does_not_block_publish(self):
+        parser = function_body(
+            "static void fetch_open_meteo_weather() {",
+            "void fetch_and_update_weather()",
+        )
+        completeness = parser[
+            parser.index("bool arrays_complete =") :
+            parser.index("if (!arrays_complete)")
+        ]
+        self.assertNotIn(
+            "precipitation_probabilities.size() >= FORECAST_POINT_COUNT",
+            completeness,
+        )
+
+        precipitation_guard = (
+            "i < precipitation_probabilities.size() &&\n"
+            "              !precipitation_probabilities[i].isNull()"
+        )
+        self.assertIn(precipitation_guard, parser)
+        guard_start = parser.index(precipitation_guard)
+        probability_assignment = parser.index(
+            "candidate.hourly[i].precipitation_probability =",
+            guard_start,
+        )
+        guard_end = parser.index("candidate.hourly[i].valid = true", guard_start)
+        self.assertLess(probability_assignment, guard_end)
+
     def test_qweather_accumulates_three_endpoints_and_publishes_once(self):
         parser = function_body(
             "void fetch_and_update_weather() {",
