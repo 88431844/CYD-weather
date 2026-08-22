@@ -114,25 +114,22 @@ static inline bool rotate_portrait_touch(
   return true;
 }
 
-static inline ThemePalette theme_palette(ThemeId theme) {
-  switch (validated_theme(static_cast<uint32_t>(theme))) {
-    case THEME_CLEAR_SKY:
-      return {0xF6FAFBu, 0xE5EEF1u, 0x18333Du, 0x647981u, 0xCCDADDu,
-              0xDF633Du, 0x197FADu, 0x087B73u};
-    case THEME_RAINFOREST:
-      return {0x132019u, 0x21362Cu, 0xF2F8F4u, 0x9AB5A6u, 0x395246u,
-              0xFFC857u, 0x7BCBE6u, 0x65D49Eu};
-    case THEME_SUNSET:
-      return {0x2B1B29u, 0x462839u, 0xFFF6F7u, 0xC8A8B4u, 0x614052u,
-              0xFFBA62u, 0x6FD1D8u, 0xFF7C79u};
-    case THEME_HIGH_CONTRAST:
-      return {0x050606u, 0x202323u, 0xFFFFFFu, 0xC8CCCCu, 0x4B5151u,
-              0xFFE100u, 0x00D9FFu, 0xFFFFFFu};
-    case THEME_DEEP_SEA:
-    default:
-      return {0x101820u, 0x1B2932u, 0xF8FBFCu, 0x8FA5AFu, 0x30434Du,
-              0xFFD25Fu, 0x63C6FFu, 0x73E1D5u};
-  }
+static constexpr ThemePalette THEME_PALETTES[THEME_COUNT] = {
+    {0x101820u, 0x1B2932u, 0xF8FBFCu, 0x8FA5AFu, 0x30434Du, 0xFFD25Fu,
+     0x63C6FFu, 0x73E1D5u},
+    {0xF6FAFBu, 0xE5EEF1u, 0x18333Du, 0x647981u, 0xCCDADDu, 0xDF633Du,
+     0x197FADu, 0x087B73u},
+    {0x132019u, 0x21362Cu, 0xF2F8F4u, 0x9AB5A6u, 0x395246u, 0xFFC857u,
+     0x7BCBE6u, 0x65D49Eu},
+    {0x2B1B29u, 0x462839u, 0xFFF6F7u, 0xC8A8B4u, 0x614052u, 0xFFBA62u,
+     0x6FD1D8u, 0xFF7C79u},
+    {0x050606u, 0x202323u, 0xFFFFFFu, 0xC8CCCCu, 0x4B5151u, 0xFFE100u,
+     0x00D9FFu, 0xFFFFFFu},
+};
+
+static inline const ThemePalette &theme_palette(ThemeId theme) {
+  const ThemeId validated = validated_theme(static_cast<uint32_t>(theme));
+  return THEME_PALETTES[static_cast<uint8_t>(validated)];
 }
 
 #endif  // AURA_DISPLAY_CONFIG_H

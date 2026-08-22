@@ -12,6 +12,21 @@ HEADER_DIR = ROOT / "aura"
 
 
 class DisplayConfigMathTests(unittest.TestCase):
+    def run_checked(self, command, phase):
+        try:
+            return subprocess.run(
+                command,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError as error:
+            self.fail(
+                f"{phase}失败（退出码 {error.returncode}）\n"
+                f"stdout:\n{error.stdout}\n"
+                f"stderr:\n{error.stderr}"
+            )
+
     def run_cpp(self, body):
         source = f'''#include "display_config.h"
 #include <cstdint>
@@ -24,7 +39,7 @@ int main() {{
             source_path = Path(temp_dir) / "test.cpp"
             binary_path = Path(temp_dir) / "test"
             source_path.write_text(source, encoding="ascii")
-            subprocess.run(
+            self.run_checked(
                 [
                     "c++",
                     "-std=c++17",
@@ -36,13 +51,9 @@ int main() {{
                     "-o",
                     str(binary_path),
                 ],
-                check=True,
-                capture_output=True,
-                text=True,
+                "C++ 编译",
             )
-            return subprocess.run(
-                [str(binary_path)], check=True, capture_output=True, text=True
-            )
+            return self.run_checked([str(binary_path)], "C++ 程序运行")
 
     def test_invalid_values_fall_back_to_default_rotation_and_theme(self):
         result = self.run_cpp(r'''
@@ -71,7 +82,7 @@ int main() {{
     def test_rotate_portrait_touch_maps_corners_and_center_in_all_directions(self):
         result = self.run_cpp(r'''
   const int points[][2] = {{0, 0}, {239, 319}, {120, 160}};
-  const int expected[][4][2] = {
+  const int expected[][3][2] = {
       {{0, 0}, {239, 319}, {120, 160}},
       {{319, 0}, {0, 239}, {159, 120}},
       {{239, 319}, {0, 0}, {119, 159}},
@@ -80,8 +91,9 @@ int main() {{
   const ScreenRotation rotations[] = {
       SCREEN_ROTATION_0, SCREEN_ROTATION_90,
       SCREEN_ROTATION_180, SCREEN_ROTATION_270};
-  for (int rotation = 0; rotation < 4; rotation++) {
-    for (int point = 0; point < 3; point++) {
+  const int point_count = sizeof(points) / sizeof(points[0]);
+  for (int rotation = 0; rotation < SCREEN_ROTATION_COUNT; rotation++) {
+    for (int point = 0; point < point_count; point++) {
       int x = -1;
       int y = -1;
       if (!rotate_portrait_touch(rotations[rotation], points[point][0],
@@ -96,14 +108,27 @@ int main() {{
 
     def test_rotate_portrait_touch_rejects_out_of_range_input_and_null_outputs(self):
         result = self.run_cpp(r'''
-  int x = 0;
-  int y = 0;
-  if (rotate_portrait_touch(SCREEN_ROTATION_0, -1, 0, &x, &y)) return 1;
-  if (rotate_portrait_touch(SCREEN_ROTATION_0, 240, 0, &x, &y)) return 2;
-  if (rotate_portrait_touch(SCREEN_ROTATION_0, 0, -1, &x, &y)) return 3;
-  if (rotate_portrait_touch(SCREEN_ROTATION_0, 0, 320, &x, &y)) return 4;
-  if (rotate_portrait_touch(SCREEN_ROTATION_0, 0, 0, nullptr, &y)) return 5;
-  if (rotate_portrait_touch(SCREEN_ROTATION_0, 0, 0, &x, nullptr)) return 6;
+  int x = 1234;
+  int y = 5678;
+  if (rotate_portrait_touch(static_cast<ScreenRotation>(99), 0, 0, &x, &y)) {
+    if (x != 0 || y != 0) return 1;
+  } else {
+    return 2;
+  }
+  x = 1234;
+  y = 5678;
+  if (rotate_portrait_touch(SCREEN_ROTATION_0, -1, 0, &x, &y)) return 3;
+  if (x != 1234 || y != 5678) return 4;
+  if (rotate_portrait_touch(SCREEN_ROTATION_0, 240, 0, &x, &y)) return 5;
+  if (x != 1234 || y != 5678) return 6;
+  if (rotate_portrait_touch(SCREEN_ROTATION_0, 0, -1, &x, &y)) return 7;
+  if (x != 1234 || y != 5678) return 8;
+  if (rotate_portrait_touch(SCREEN_ROTATION_0, 0, 320, &x, &y)) return 9;
+  if (x != 1234 || y != 5678) return 10;
+  if (rotate_portrait_touch(SCREEN_ROTATION_0, 0, 0, nullptr, &y)) return 11;
+  if (y != 5678) return 12;
+  if (rotate_portrait_touch(SCREEN_ROTATION_0, 0, 0, &x, nullptr)) return 13;
+  if (x != 1234) return 14;
   return 0;
 ''')
         self.assertEqual(result.returncode, 0)
@@ -118,7 +143,7 @@ int main() {{
       {0x050606u, 0x202323u, 0xFFFFFFu, 0xC8CCCCu, 0x4B5151u, 0xFFE100u, 0x00D9FFu, 0xFFFFFFu},
   };
   for (int theme = 0; theme < 5; theme++) {
-    const ThemePalette actual = theme_palette(static_cast<ThemeId>(theme));
+    const ThemePalette &actual = theme_palette(static_cast<ThemeId>(theme));
     const uint32_t actual_values[] = {
         actual.background, actual.panel, actual.text, actual.muted,
         actual.grid, actual.high_temperature, actual.low_temperature,
