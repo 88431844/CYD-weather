@@ -4,6 +4,7 @@
 #include <math.h>
 #include <limits.h>
 #include <stdint.h>
+#include <string.h>
 
 static constexpr int FORECAST_POINT_COUNT = 7;
 static constexpr double CHART_DISPLAY_TEMPERATURE_MIN = -200.0;
@@ -39,16 +40,43 @@ struct HourlyForecastPoint {
   bool valid;
 };
 
+struct SolarTimes {
+  char sunrise[6];
+  char sunset[6];
+  bool has_sunrise;
+  bool has_sunset;
+};
+
 struct WeatherSnapshot {
   CurrentConditions current;
   DailyForecastPoint daily[FORECAST_POINT_COUNT];
   HourlyForecastPoint hourly[FORECAST_POINT_COUNT];
+  SolarTimes solar;
 };
 
 static inline void clear_weather_snapshot(WeatherSnapshot *snapshot) {
   if (snapshot) {
     *snapshot = WeatherSnapshot{};
   }
+}
+
+static inline bool parse_hh_mm(const char *value, char output[6]) {
+  if (!value || !output) return false;
+  const char *clock = strchr(value, 'T');
+  clock = clock ? clock + 1 : value;
+  if (strlen(clock) < 5 || clock[2] != ':' ||
+      clock[0] < '0' || clock[0] > '9' ||
+      clock[1] < '0' || clock[1] > '9' ||
+      clock[3] < '0' || clock[3] > '9' ||
+      clock[4] < '0' || clock[4] > '9') {
+    return false;
+  }
+  const int hour = (clock[0] - '0') * 10 + clock[1] - '0';
+  const int minute = (clock[3] - '0') * 10 + clock[4] - '0';
+  if (hour > 23 || minute > 59) return false;
+  memcpy(output, clock, 5);
+  output[5] = '\0';
+  return true;
 }
 
 static inline bool safe_chart_temperature(

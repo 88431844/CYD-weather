@@ -102,6 +102,34 @@ int main() {{
   return 0;
 ''')
 
+    def test_solar_time_parser_accepts_provider_formats_and_rejects_invalid_values(self):
+        self.run_cpp(r'''
+  char output[6] = {};
+  if (!parse_hh_mm("2026-08-22T06:15", output)) return 1;
+  if (strcmp(output, "06:15") != 0) return 2;
+  if (!parse_hh_mm("18:42", output)) return 3;
+  if (strcmp(output, "18:42") != 0) return 4;
+  if (parse_hh_mm("24:00", output)) return 5;
+  if (parse_hh_mm("06:60", output)) return 6;
+  if (parse_hh_mm("", output)) return 7;
+  if (parse_hh_mm(nullptr, output)) return 8;
+  if (parse_hh_mm("06:15", nullptr)) return 9;
+  return 0;
+''')
+
+    def test_clear_resets_optional_solar_times(self):
+        self.run_cpp(r'''
+  WeatherSnapshot snapshot = {};
+  strcpy(snapshot.solar.sunrise, "06:15");
+  strcpy(snapshot.solar.sunset, "18:42");
+  snapshot.solar.has_sunrise = true;
+  snapshot.solar.has_sunset = true;
+  clear_weather_snapshot(&snapshot);
+  if (snapshot.solar.sunrise[0] != '\0' || snapshot.solar.sunset[0] != '\0') return 1;
+  if (snapshot.solar.has_sunrise || snapshot.solar.has_sunset) return 2;
+  return 0;
+''')
+
     def test_daily_range_adds_two_degrees_to_valid_minimum_and_maximum(self):
         self.run_cpp(r'''
   WeatherSnapshot snapshot = {};
