@@ -26,6 +26,31 @@ class SettingsLayoutAndSoundTests(unittest.TestCase):
         )
         self.assertNotIn("fetch_and_update_weather", rebuild)
 
+    def test_temperature_and_clock_switches_rerender_cache_without_fetching(self):
+        handler = WEATHER[
+            WEATHER.index("static void settings_event_handler(lv_event_t *e) {") :
+            WEATHER.index("static void refresh_weather_after_click_sound")
+        ]
+        branches = (
+            (
+                handler[handler.index("if (tgt == unit_switch") : handler.index("if (tgt == clock_24hr_switch")],
+                "use_fahrenheit = lv_obj_has_state(unit_switch, LV_STATE_CHECKED);",
+            ),
+            (
+                handler[handler.index("if (tgt == clock_24hr_switch") : handler.index("if (tgt == night_mode_switch")],
+                "use_24_hour = lv_obj_has_state(clock_24hr_switch, LV_STATE_CHECKED);",
+            ),
+        )
+        for branch, state_update in branches:
+            self.assertIn(state_update, branch)
+            self.assertEqual(branch.count("render_weather_snapshot();"), 1)
+            self.assertLess(
+                branch.index(state_update),
+                branch.index("render_weather_snapshot();"),
+            )
+            self.assertRegex(branch, r"render_weather_snapshot\(\);\s*return;\s*\}")
+            self.assertNotIn("fetch_and_update_weather", branch)
+
     def test_forecast_tabs_save_active_view_and_do_not_fetch(self):
         daily = WEATHER[WEATHER.index("void daily_cb(lv_event_t *e) {") : WEATHER.index("void hourly_cb")]
         hourly = WEATHER[WEATHER.index("void hourly_cb(lv_event_t *e) {") : WEATHER.index("static void reset_wifi_event_handler")]

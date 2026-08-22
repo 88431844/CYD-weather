@@ -1922,10 +1922,14 @@ static void settings_event_handler(lv_event_t *e) {
 
   if (tgt == unit_switch && code == LV_EVENT_VALUE_CHANGED) {
     use_fahrenheit = lv_obj_has_state(unit_switch, LV_STATE_CHECKED);
+    render_weather_snapshot();
+    return;
   }
 
   if (tgt == clock_24hr_switch && code == LV_EVENT_VALUE_CHANGED) {
     use_24_hour = lv_obj_has_state(clock_24hr_switch, LV_STATE_CHECKED);
+    render_weather_snapshot();
+    return;
   }
 
   if (tgt == night_mode_switch && code == LV_EVENT_VALUE_CHANGED) {
