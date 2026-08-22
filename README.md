@@ -36,6 +36,14 @@ The Simplified Chinese interface uses glyphs generated from [Noto Sans CJK SC](h
 
 The interface is available in English, Spanish, German, French, Turkish, Swedish, Italian, and Simplified Chinese.
 
+### 显示方向与主题
+
+在 Aura 设置的“显示设置”中可选择 0°、90°、180° 或 270°。0°/180°
+使用竖屏列表，90°/270° 使用横屏折线图；触摸坐标会自动随屏幕方向校正。
+
+主题提供深海、晴空、雨林、晚霞和高对比五种选择，并对主页、设置和弹窗全局生效。
+七天横屏图显示最高温、最低温及逐日天气图标；小时横屏图显示逐小时温度、天气图标和可用的降水概率。
+
 ### Thanks & Credits
 
 - Weather icons from https://github.com/mrdarrengriffin/google-weather-icons/tree/main/v2
