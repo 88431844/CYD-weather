@@ -311,8 +311,8 @@ class QWeatherIntegrationTests(unittest.TestCase):
 
     def test_create_ui_uses_safe_placeholders_until_snapshot_rendering(self):
         create_ui = WEATHER[
-            WEATHER.index("void create_ui() {") :
-            WEATHER.index("void populate_results_dropdown()")
+            WEATHER.index("static void create_portrait_ui(lv_obj_t *scr) {") :
+            WEATHER.index("void create_ui() {")
         ]
         for label in (
             "lbl_daily_day[i]",

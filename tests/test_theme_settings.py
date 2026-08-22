@@ -10,6 +10,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 HEADER_DIR = ROOT / "aura"
 TRANSLATIONS = (HEADER_DIR / "translations.h").read_text(encoding="utf-8")
+WEATHER = (HEADER_DIR / "weather.ino").read_text(encoding="utf-8")
 
 
 class ThemeSettingsTranslationTests(unittest.TestCase):
@@ -107,6 +108,59 @@ int main() {{
   }
   return 0;
 ''')
+
+    def test_create_ui_only_dispatches_to_extracted_portrait_builder(self):
+        create_start = WEATHER.index("void create_ui() {")
+        create_end = WEATHER.index("void populate_results_dropdown()", create_start)
+        create = WEATHER[create_start:create_end]
+        self.assertIn("static void create_portrait_ui(lv_obj_t *scr) {", WEATHER)
+        self.assertEqual(create.count("create_portrait_ui(scr);"), 1)
+        self.assertNotIn("create_landscape_ui", create)
+        for object_name in (
+            "img_today_icon",
+            "lbl_today_temp",
+            "lbl_network_status",
+            "box_daily",
+            "box_hourly",
+            "lbl_clock",
+        ):
+            self.assertNotIn(f"{object_name} =", create)
+
+    def test_theme_helpers_apply_current_palette_to_root(self):
+        helpers_start = WEATHER.index("static lv_color_t theme_color(uint32_t rgb) {")
+        helpers_end = WEATHER.index("void wifi_splash_screen()", helpers_start)
+        helpers = WEATHER[helpers_start:helpers_end]
+        self.assertIn("return lv_color_hex(rgb);", helpers)
+        self.assertIn("static void apply_root_theme(lv_obj_t *root)", helpers)
+        self.assertIn("theme_palette(current_theme)", helpers)
+        self.assertIn("theme_color(palette.background)", helpers)
+        self.assertIn("theme_color(palette.text)", helpers)
+
+    def test_theme_palette_is_used_by_all_required_surfaces(self):
+        function_ranges = {
+            "启动页": ("void wifi_splash_screen() {", "static void create_portrait_ui(lv_obj_t *scr) {"),
+            "竖屏主页": ("static void create_portrait_ui(lv_obj_t *scr) {", "void create_ui() {"),
+            "和风天气配置提示": ("static void open_qweather_config_portal() {", "static void qweather_cancel_event_cb"),
+            "校准结果消息框": ("static void finish_touch_calibration(bool success) {", "static void calibration_timer_cb"),
+            "触摸校准页": ("static void start_touch_calibration() {", "void daily_cb"),
+            "重置消息框": ("static void reset_wifi_event_handler(lv_event_t *e) {", "static void reset_confirm_yes_cb"),
+            "位置窗口": ("void create_location_dialog() {", "void create_settings_window()"),
+            "设置窗": ("void create_settings_window() {", "static void settings_event_handler"),
+        }
+        for surface, (start_marker, end_marker) in function_ranges.items():
+            start = WEATHER.index(start_marker)
+            end = WEATHER.index(end_marker, start)
+            body = WEATHER[start:end]
+            self.assertIn("theme_palette(current_theme)", body, surface)
+            self.assertIn("theme_color(", body, surface)
+
+    def test_night_mode_only_controls_backlight(self):
+        start = WEATHER.index("bool night_mode_should_be_active() {")
+        end = WEATHER.index("void do_geocode_query", start)
+        night_mode = WEATHER[start:end]
+        self.assertIn("analogWrite(LCD_BACKLIGHT_PIN", night_mode)
+        self.assertNotIn("theme_palette", night_mode)
+        self.assertNotIn("lv_obj_set_style", night_mode)
 
 
 if __name__ == "__main__":

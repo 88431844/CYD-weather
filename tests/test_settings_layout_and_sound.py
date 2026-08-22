@@ -144,7 +144,7 @@ class SettingsLayoutAndSoundTests(unittest.TestCase):
 
     def test_home_screen_is_fixed_width_and_status_labels_are_bounded(self):
         home = WEATHER[
-            WEATHER.index("void create_ui() {") :
+            WEATHER.index("static void create_portrait_ui(lv_obj_t *scr) {") :
             WEATHER.index("void populate_results_dropdown()")
         ]
         self.assertIn("lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE)", home)
