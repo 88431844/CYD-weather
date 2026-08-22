@@ -20,6 +20,9 @@
 #include "translations.h"
 #include "touch_calibration.h"
 
+static_assert(CHART_POINT_NONE_VALUE == LV_CHART_POINT_NONE,
+              "Forecast and LVGL missing-point sentinels must match");
+
 #define XPT2046_IRQ 36   // T_IRQ
 #define XPT2046_MOSI 32  // T_DIN
 #define XPT2046_MISO 39  // T_OUT
@@ -525,29 +528,6 @@ static float temperature_for_display(float celsius) {
   return use_fahrenheit ? celsius * 9.0f / 5.0f + 32.0f : celsius;
 }
 
-static bool safe_chart_temperature(
-    float celsius, float *out_display, int32_t *out_chart_value) {
-  if (!out_display || !out_chart_value) return false;
-
-  const double source = static_cast<double>(celsius);
-  if (!isfinite(source)) return false;
-  const double display = use_fahrenheit
-      ? source * 9.0 / 5.0 + 32.0 : source;
-  if (!isfinite(display)) return false;
-  const double rounded = round(display);
-  if (!isfinite(rounded) ||
-      rounded < static_cast<double>(INT32_MIN) ||
-      rounded > static_cast<double>(INT32_MAX)) {
-    return false;
-  }
-
-  const int32_t chart_value = static_cast<int32_t>(rounded);
-  if (chart_value == LV_CHART_POINT_NONE) return false;
-  *out_display = static_cast<float>(display);
-  *out_chart_value = chart_value;
-  return true;
-}
-
 static void prepare_landscape_chart_points() {
   for (int i = 0; i < FORECAST_POINT_COUNT; i++) {
     daily_point_renderable[i] = false;
@@ -559,10 +539,12 @@ static void prepare_landscape_chart_points() {
     const DailyForecastPoint &daily = weather_snapshot.daily[i];
     daily_point_renderable[i] = daily.valid &&
         safe_chart_temperature(
-            daily.maximum, &daily_high_display_temperatures[i],
+            daily.maximum, use_fahrenheit,
+            &daily_high_display_temperatures[i],
             &daily_high_values[i]) &&
         safe_chart_temperature(
-            daily.minimum, &daily_low_display_temperatures[i],
+            daily.minimum, use_fahrenheit,
+            &daily_low_display_temperatures[i],
             &daily_low_values[i]);
     if (!daily_point_renderable[i]) {
       daily_high_values[i] = LV_CHART_POINT_NONE;
@@ -572,7 +554,8 @@ static void prepare_landscape_chart_points() {
     const HourlyForecastPoint &hourly = weather_snapshot.hourly[i];
     hourly_point_renderable[i] = hourly.valid &&
         safe_chart_temperature(
-            hourly.temperature, &hourly_display_temperatures[i],
+            hourly.temperature, use_fahrenheit,
+            &hourly_display_temperatures[i],
             &hourly_temperature_values[i]);
     if (!hourly_point_renderable[i]) {
       hourly_temperature_values[i] = LV_CHART_POINT_NONE;
@@ -626,6 +609,21 @@ static bool hourly_display_chart_range(int *out_minimum, int *out_maximum) {
          padded_chart_range(minimum, maximum, out_minimum, out_maximum);
 }
 
+static void invalidate_daily_chart_points() {
+  for (int i = 0; i < FORECAST_POINT_COUNT; i++) {
+    daily_point_renderable[i] = false;
+    daily_high_values[i] = LV_CHART_POINT_NONE;
+    daily_low_values[i] = LV_CHART_POINT_NONE;
+  }
+}
+
+static void invalidate_hourly_chart_points() {
+  for (int i = 0; i < FORECAST_POINT_COUNT; i++) {
+    hourly_point_renderable[i] = false;
+    hourly_temperature_values[i] = LV_CHART_POINT_NONE;
+  }
+}
+
 static void render_landscape_snapshot() {
   const LocalizedStrings *strings = get_strings(current_language);
   const char unit = use_fahrenheit ? 'F' : 'C';
@@ -657,10 +655,14 @@ static void render_landscape_snapshot() {
   if (daily_display_chart_range(&range_min, &range_max)) {
     lv_chart_set_range(
         daily_chart, LV_CHART_AXIS_PRIMARY_Y, range_min, range_max);
+  } else {
+    invalidate_daily_chart_points();
   }
   if (hourly_display_chart_range(&range_min, &range_max)) {
     lv_chart_set_range(
         hourly_chart, LV_CHART_AXIS_PRIMARY_Y, range_min, range_max);
+  } else {
+    invalidate_hourly_chart_points();
   }
 
   for (int i = 0; i < FORECAST_POINT_COUNT; i++) {

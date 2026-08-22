@@ -6,6 +6,9 @@
 #include <stdint.h>
 
 static constexpr int FORECAST_POINT_COUNT = 7;
+static constexpr double CHART_DISPLAY_TEMPERATURE_MIN = -200.0;
+static constexpr double CHART_DISPLAY_TEMPERATURE_MAX = 200.0;
+static constexpr int32_t CHART_POINT_NONE_VALUE = INT32_MAX;
 
 struct CurrentConditions {
   float temperature;
@@ -44,6 +47,52 @@ static inline void clear_weather_snapshot(WeatherSnapshot *snapshot) {
   if (snapshot) {
     *snapshot = WeatherSnapshot{};
   }
+}
+
+static inline bool safe_chart_temperature(
+    float celsius,
+    bool use_fahrenheit,
+    float *out_display,
+    int32_t *out_chart_value) {
+  if (!out_display || !out_chart_value) {
+    return false;
+  }
+
+  const double source = static_cast<double>(celsius);
+  if (!isfinite(source)) {
+    return false;
+  }
+
+  const double display = use_fahrenheit
+      ? source * 9.0 / 5.0 + 32.0
+      : source;
+  if (!isfinite(display)) {
+    return false;
+  }
+  if (display < CHART_DISPLAY_TEMPERATURE_MIN ||
+      display > CHART_DISPLAY_TEMPERATURE_MAX) {
+    return false;
+  }
+
+  const double rounded = round(display);
+  if (!isfinite(rounded) ||
+      rounded < CHART_DISPLAY_TEMPERATURE_MIN ||
+      rounded > CHART_DISPLAY_TEMPERATURE_MAX) {
+    return false;
+  }
+  if (rounded < static_cast<double>(INT32_MIN) ||
+      rounded > static_cast<double>(INT32_MAX)) {
+    return false;
+  }
+
+  const int32_t chart_value = static_cast<int32_t>(rounded);
+  if (chart_value == CHART_POINT_NONE_VALUE) {
+    return false;
+  }
+
+  *out_display = static_cast<float>(display);
+  *out_chart_value = chart_value;
+  return true;
 }
 
 static inline bool padded_chart_range(

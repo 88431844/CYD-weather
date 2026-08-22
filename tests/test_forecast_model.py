@@ -242,6 +242,44 @@ int main() {{
   return 0;
 ''')
 
+    def test_chart_temperature_conversion_enforces_weather_domain_and_extremes(self):
+        self.run_cpp(r'''
+  static_assert(CHART_DISPLAY_TEMPERATURE_MIN == -200.0);
+  static_assert(CHART_DISPLAY_TEMPERATURE_MAX == 200.0);
+  static_assert(CHART_POINT_NONE_VALUE == INT32_MAX);
+
+  float display = 999.0f;
+  int32_t chart = 999;
+  if (!safe_chart_temperature(-200.0f, false, &display, &chart) ||
+      display != -200.0f || chart != -200) return 1;
+  if (!safe_chart_temperature(200.0f, false, &display, &chart) ||
+      display != 200.0f || chart != 200) return 2;
+  if (!safe_chart_temperature(0.0f, true, &display, &chart) ||
+      display != 32.0f || chart != 32) return 3;
+
+  const float rejected[] = {
+      -200.01f, 200.01f,
+      static_cast<float>(INT32_MIN),
+      static_cast<float>(INT32_MAX - 1),
+      std::numeric_limits<float>::quiet_NaN(),
+      std::numeric_limits<float>::infinity(),
+  };
+  for (float value : rejected) {
+    display = 999.0f;
+    chart = 999;
+    if (safe_chart_temperature(value, false, &display, &chart)) return 4;
+    if (display != 999.0f || chart != 999) return 5;
+  }
+
+  display = 999.0f;
+  chart = 999;
+  if (safe_chart_temperature(100.0f, true, &display, &chart)) return 6;
+  if (display != 999.0f || chart != 999) return 7;
+  if (safe_chart_temperature(0.0f, false, nullptr, &chart)) return 8;
+  if (safe_chart_temperature(0.0f, false, &display, nullptr)) return 9;
+  return 0;
+''')
+
 
 if __name__ == "__main__":
     unittest.main()

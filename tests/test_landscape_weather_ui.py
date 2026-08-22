@@ -8,6 +8,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 WEATHER = (ROOT / "aura" / "weather.ino").read_text(encoding="utf-8")
+FORECAST_MODEL = (ROOT / "aura" / "forecast_model.h").read_text(encoding="utf-8")
 
 
 def function_body(signature: str, next_signature: str) -> str:
@@ -163,18 +164,22 @@ class LandscapeWeatherUiTests(unittest.TestCase):
         )
 
     def test_renderer_converts_chart_values_ranges_and_labels_to_same_unit(self):
-        conversion = function_body(
-            "static bool safe_chart_temperature(",
-            "static void prepare_landscape_chart_points",
+        for contract in (
+            "CHART_DISPLAY_TEMPERATURE_MIN",
+            "CHART_DISPLAY_TEMPERATURE_MAX",
+            "CHART_POINT_NONE_VALUE",
+            "static inline bool safe_chart_temperature(",
+            "source * 9.0 / 5.0 + 32.0",
+            "round(display)",
+        ):
+            self.assertIn(contract, FORECAST_MODEL)
+        self.assertGreaterEqual(FORECAST_MODEL.count("isfinite("), 3)
+        self.assertIn("static_cast<double>(INT32_MIN)", FORECAST_MODEL)
+        self.assertIn("static_cast<double>(INT32_MAX)", FORECAST_MODEL)
+        self.assertIn(
+            "static_assert(CHART_POINT_NONE_VALUE == LV_CHART_POINT_NONE",
+            WEATHER,
         )
-        self.assertIn("use_fahrenheit", conversion)
-        self.assertIn("static_cast<double>(celsius)", conversion)
-        self.assertIn("source * 9.0 / 5.0 + 32.0", conversion)
-        self.assertGreaterEqual(conversion.count("isfinite("), 3)
-        self.assertIn("round(display)", conversion)
-        self.assertIn("INT32_MIN", conversion)
-        self.assertIn("INT32_MAX", conversion)
-        self.assertIn("LV_CHART_POINT_NONE", conversion)
 
         preparation = function_body(
             "static void prepare_landscape_chart_points() {",
@@ -182,6 +187,7 @@ class LandscapeWeatherUiTests(unittest.TestCase):
         )
         self.assertIn("daily_point_renderable[i] =", preparation)
         self.assertGreaterEqual(preparation.count("safe_chart_temperature("), 3)
+        self.assertGreaterEqual(preparation.count("use_fahrenheit"), 3)
         self.assertIn("hourly_point_renderable[i] =", preparation)
 
         daily_range = function_body(
@@ -208,6 +214,37 @@ class LandscapeWeatherUiTests(unittest.TestCase):
         self.assertIn("daily_display_chart_range(&range_min, &range_max)", renderer)
         self.assertIn("hourly_display_chart_range(&range_min, &range_max)", renderer)
         self.assertEqual(renderer.count("lv_chart_set_range"), 2)
+
+    def test_range_failure_invalidates_entire_chart_view_before_positioning(self):
+        daily_invalidation = function_body(
+            "static void invalidate_daily_chart_points() {",
+            "static void invalidate_hourly_chart_points",
+        )
+        hourly_invalidation = function_body(
+            "static void invalidate_hourly_chart_points() {",
+            "static void render_landscape_snapshot",
+        )
+        self.assertIn("daily_point_renderable[i] = false", daily_invalidation)
+        self.assertGreaterEqual(daily_invalidation.count("LV_CHART_POINT_NONE"), 2)
+        self.assertIn("hourly_point_renderable[i] = false", hourly_invalidation)
+        self.assertIn("LV_CHART_POINT_NONE", hourly_invalidation)
+
+        renderer = function_body(
+            "static void render_landscape_snapshot() {",
+            "static void set_object_hidden(",
+        )
+        self.assertRegex(
+            renderer,
+            r"if \(daily_display_chart_range\([\s\S]*?else \{\s*invalidate_daily_chart_points\(\);",
+        )
+        self.assertRegex(
+            renderer,
+            r"if \(hourly_display_chart_range\([\s\S]*?else \{\s*invalidate_hourly_chart_points\(\);",
+        )
+        self.assertLess(
+            renderer.index("invalidate_hourly_chart_points();"),
+            renderer.index("position_chart_temperature_labels();"),
+        )
 
     def test_renderer_hides_entire_invalid_groups_and_marks_missing_chart_points(self):
         renderer = function_body(
