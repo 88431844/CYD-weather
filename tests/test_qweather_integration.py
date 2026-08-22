@@ -265,6 +265,47 @@ class QWeatherIntegrationTests(unittest.TestCase):
         self.assertIn(rejection, parser)
         self.assertLess(parser.index(rejection), parser.index("publish_weather_snapshot"))
 
+    def test_open_meteo_populates_optional_solar_times(self):
+        parser = function_body(
+            "static void fetch_open_meteo_weather() {",
+            "void fetch_and_update_weather()",
+        )
+        self.assertIn(
+            "&daily=temperature_2m_min,temperature_2m_max,weather_code,sunrise,sunset",
+            parser,
+        )
+        self.assertIn(
+            'JsonArray sunrises = doc["daily"]["sunrise"].as<JsonArray>();',
+            parser,
+        )
+        self.assertIn(
+            'JsonArray sunsets = doc["daily"]["sunset"].as<JsonArray>();',
+            parser,
+        )
+        self.assertIn("candidate.solar.has_sunrise = parse_hh_mm(", parser)
+        self.assertIn("candidate.solar.has_sunset = parse_hh_mm(", parser)
+        current_guard = parser[
+            parser.index("bool current_complete") : parser.index("if (!current_complete)")
+        ]
+        self.assertNotIn("sunrise", current_guard)
+        self.assertNotIn("sunset", current_guard)
+
+    def test_qweather_populates_optional_solar_times_from_today(self):
+        parser = function_body(
+            "void fetch_and_update_weather() {",
+            "const lv_img_dsc_t* choose_image",
+        )
+        self.assertIn('daily[0]["sunrise"]', parser)
+        self.assertIn('daily[0]["sunset"]', parser)
+        self.assertIn("candidate.solar.has_sunrise = parse_hh_mm(", parser)
+        self.assertIn("candidate.solar.has_sunset = parse_hh_mm(", parser)
+        required_start = parser.index('const char *date = daily[i]["fxDate"]')
+        daily_required = parser[
+            required_start : parser.index("continue;", required_start)
+        ]
+        self.assertNotIn("sunrise", daily_required)
+        self.assertNotIn("sunset", daily_required)
+
     def test_qweather_falls_back_when_forecast_sections_have_no_valid_points(self):
         fetch = WEATHER[
             WEATHER.rindex("void fetch_and_update_weather() {") :

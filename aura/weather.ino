@@ -3472,7 +3472,7 @@ static void fetch_open_meteo_weather() {
   String url = String("http://api.open-meteo.com/v1/forecast?latitude=")
                + latitude + "&longitude=" + longitude
                + "&current=temperature_2m,apparent_temperature,relative_humidity_2m,is_day,weather_code"
-               + "&daily=temperature_2m_min,temperature_2m_max,weather_code"
+               + "&daily=temperature_2m_min,temperature_2m_max,weather_code,sunrise,sunset"
                + "&hourly=temperature_2m,precipitation_probability,is_day,weather_code"
                + "&forecast_hours=7"
                + "&timezone=auto";
@@ -3493,6 +3493,8 @@ static void fetch_open_meteo_weather() {
       JsonArray tmin = doc["daily"]["temperature_2m_min"].as<JsonArray>();
       JsonArray tmax = doc["daily"]["temperature_2m_max"].as<JsonArray>();
       JsonArray weather_codes = doc["daily"]["weather_code"].as<JsonArray>();
+      JsonArray sunrises = doc["daily"]["sunrise"].as<JsonArray>();
+      JsonArray sunsets = doc["daily"]["sunset"].as<JsonArray>();
       JsonArray hours = doc["hourly"]["time"].as<JsonArray>();
       JsonArray hourly_temps = doc["hourly"]["temperature_2m"].as<JsonArray>();
       JsonArray precipitation_probabilities = doc["hourly"]["precipitation_probability"].as<JsonArray>();
@@ -3520,6 +3522,15 @@ static void fetch_open_meteo_weather() {
         candidate.current.weather_code = current["weather_code"].as<int>();
         candidate.current.is_day = current["is_day"].as<int>() != 0;
         candidate.current.valid = true;
+
+        if (sunrises.size() > 0) {
+          candidate.solar.has_sunrise = parse_hh_mm(
+              sunrises[0] | "", candidate.solar.sunrise);
+        }
+        if (sunsets.size() > 0) {
+          candidate.solar.has_sunset = parse_hh_mm(
+              sunsets[0] | "", candidate.solar.sunset);
+        }
 
         int valid_daily_points = 0;
         int valid_hourly_points = 0;
@@ -3641,6 +3652,12 @@ void fetch_and_update_weather() {
   }
 
   JsonArray daily = doc["daily"].as<JsonArray>();
+  if (daily.size() > 0) {
+    candidate.solar.has_sunrise = parse_hh_mm(
+        daily[0]["sunrise"] | "", candidate.solar.sunrise);
+    candidate.solar.has_sunset = parse_hh_mm(
+        daily[0]["sunset"] | "", candidate.solar.sunset);
+  }
   int valid_daily_points = 0;
   for (int i = 0; i < FORECAST_POINT_COUNT; i++) {
     if (i >= daily.size()) {
