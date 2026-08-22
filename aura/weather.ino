@@ -152,8 +152,22 @@ enum WeatherSource {
   WEATHER_SOURCE_OPEN_METEO
 };
 
+enum WeatherProvider : uint8_t {
+  WEATHER_PROVIDER_OPEN_METEO = 0,
+  WEATHER_PROVIDER_QWEATHER = 1
+};
+
+static WeatherProvider validated_weather_provider(uint32_t value);
+
 enum ForecastView : uint8_t { FORECAST_DAILY, FORECAST_HOURLY };
 
+static WeatherProvider validated_weather_provider(uint32_t value) {
+  return value == WEATHER_PROVIDER_QWEATHER
+      ? WEATHER_PROVIDER_QWEATHER
+      : WEATHER_PROVIDER_OPEN_METEO;
+}
+
+static WeatherProvider weather_provider = WEATHER_PROVIDER_OPEN_METEO;
 static uint8_t weather_source = WEATHER_SOURCE_UNKNOWN;
 static String weather_updated_at;
 static WeatherSnapshot weather_snapshot{};
@@ -164,6 +178,7 @@ static bool night_mode_active = false;
 static bool temp_screen_wakeup_active = false;
 static lv_timer_t *temp_screen_wakeup_timer = nullptr;
 static lv_timer_t *startup_weather_timer = nullptr;
+static bool weather_refresh_requested = false;
 static lv_timer_t *speaker_timer = nullptr;
 static uint8_t speaker_sequence_step = 0;
 
@@ -195,6 +210,7 @@ static lv_obj_t *unit_switch;
 static lv_obj_t *clock_24hr_switch;
 static lv_obj_t *night_mode_switch;
 static lv_obj_t *language_dropdown;
+static lv_obj_t *weather_provider_dropdown;
 static lv_obj_t *lbl_clock;
 static lv_obj_t *lbl_network_status;
 static lv_obj_t *lbl_update_status;
@@ -1122,6 +1138,7 @@ static void clear_screen_object_references() {
   clock_24hr_switch = nullptr;
   night_mode_switch = nullptr;
   language_dropdown = nullptr;
+  weather_provider_dropdown = nullptr;
   touch_calibration_btn = nullptr;
   sound_enabled_switch = nullptr;
   sound_effect_dropdown = nullptr;
@@ -1204,6 +1221,8 @@ void setup() {
   sound_enabled = prefs.getBool("soundEnabled", true);
   sound_effect = constrain(prefs.getUInt("soundEffect", 0), 0, 3);
   current_language = (Language)prefs.getUInt("language", LANG_ZH);
+  weather_provider = validated_weather_provider(
+      prefs.getUInt("weatherProvider", WEATHER_PROVIDER_OPEN_METEO));
   String saved_qweather_key = prefs.getString("qweatherKey", "");
   saved_qweather_key.toCharArray(qweather_key, sizeof(qweather_key));
   qweather_key_param.setValue(qweather_key, sizeof(qweather_key));
@@ -1589,6 +1608,12 @@ void loop() {
   lv_timer_handler();
   process_qweather_config_portal();
   static uint32_t last = millis();
+
+  if (weather_refresh_requested) {
+    weather_refresh_requested = false;
+    fetch_and_update_weather();
+    last = millis();
+  }
 
   if (millis() - last >= UPDATE_INTERVAL) {
     fetch_and_update_weather();
@@ -3106,6 +3131,32 @@ void create_settings_window() {
   lv_obj_align(sound_effect_dropdown, LV_ALIGN_RIGHT_MID, 0, 0);
   lv_obj_add_event_cb(sound_effect_dropdown, settings_event_handler, LV_EVENT_VALUE_CHANGED, NULL);
 
+  // Weather provider
+  lv_obj_t *provider_row = create_row(42);
+  lv_obj_t *provider_label = lv_label_create(provider_row);
+  lv_label_set_text(provider_label, strings->weather_provider);
+  style_label(provider_label);
+  weather_provider_dropdown = lv_dropdown_create(provider_row);
+  String provider_options = String(strings->open_meteo_name) + "\n" +
+                            strings->qweather_name;
+  lv_dropdown_set_options(weather_provider_dropdown, provider_options.c_str());
+  lv_dropdown_set_selected(weather_provider_dropdown, weather_provider);
+  lv_obj_set_width(weather_provider_dropdown, 132);
+  lv_obj_set_style_text_font(
+      weather_provider_dropdown, get_font_12(),
+      LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_font(
+      weather_provider_dropdown, get_font_12(),
+      LV_PART_SELECTED | LV_STATE_DEFAULT);
+  lv_obj_t *provider_list = lv_dropdown_get_list(weather_provider_dropdown);
+  lv_obj_set_style_text_font(
+      provider_list, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
+  apply_dropdown_theme(weather_provider_dropdown);
+  lv_obj_align(weather_provider_dropdown, LV_ALIGN_RIGHT_MID, 0, 0);
+  lv_obj_add_event_cb(
+      weather_provider_dropdown, settings_event_handler,
+      LV_EVENT_VALUE_CHANGED, nullptr);
+
   // QWeather configuration portal
   lv_obj_t *qweather_row = create_row(38);
   qweather_config_btn = lv_btn_create(qweather_row);
@@ -3206,6 +3257,18 @@ static void settings_event_handler(lv_event_t *e) {
 
   if (tgt == qweather_config_btn && code == LV_EVENT_CLICKED) {
     open_qweather_config_portal();
+    return;
+  }
+
+  if (tgt == weather_provider_dropdown && code == LV_EVENT_VALUE_CHANGED) {
+    weather_provider = validated_weather_provider(
+        lv_dropdown_get_selected(weather_provider_dropdown));
+    prefs.putUInt("weatherProvider", weather_provider);
+    if (weather_provider == WEATHER_PROVIDER_QWEATHER &&
+        strlen(qweather_key) == 0) {
+      open_qweather_config_portal();
+    }
+    weather_refresh_requested = true;
     return;
   }
 
@@ -3456,6 +3519,8 @@ static void fetch_open_meteo_weather() {
         candidate.current.is_day = current["is_day"].as<int>() != 0;
         candidate.current.valid = true;
 
+        int valid_daily_points = 0;
+        int valid_hourly_points = 0;
         for (int i = 0; i < FORECAST_POINT_COUNT; i++) {
           if (i < times.size() && i < tmin.size() && i < tmax.size() &&
               i < weather_codes.size()) {
@@ -3468,6 +3533,7 @@ static void fetch_open_meteo_weather() {
               candidate.daily[i].month = static_cast<uint8_t>(atoi(date + 5));
               candidate.daily[i].day = static_cast<uint8_t>(atoi(date + 8));
               candidate.daily[i].valid = true;
+              valid_daily_points++;
             } else {
               Serial.printf("Open-Meteo daily point %d incomplete.\n", i);
             }
@@ -3493,17 +3559,22 @@ static void fetch_open_meteo_weather() {
                     precipitation_probabilities[i].as<float>();
               }
               candidate.hourly[i].valid = true;
+              valid_hourly_points++;
             } else {
               Serial.printf("Open-Meteo hourly point %d incomplete.\n", i);
             }
           }
         }
 
-        int utc_offset_seconds = doc["utc_offset_seconds"].as<int>();
-        configTime(utc_offset_seconds, 0, "pool.ntp.org", "time.nist.gov");
-        String updated_at = doc["current"]["time"] | "";
-        publish_weather_snapshot(candidate);
-        update_home_status(WEATHER_SOURCE_OPEN_METEO, updated_at.c_str());
+        if (valid_daily_points == 0 || valid_hourly_points == 0) {
+          Serial.println("Open-Meteo forecast sections incomplete.");
+        } else {
+          int utc_offset_seconds = doc["utc_offset_seconds"].as<int>();
+          configTime(utc_offset_seconds, 0, "pool.ntp.org", "time.nist.gov");
+          String updated_at = doc["current"]["time"] | "";
+          publish_weather_snapshot(candidate);
+          update_home_status(WEATHER_SOURCE_OPEN_METEO, updated_at.c_str());
+        }
       }
     } else {
       Serial.println("Open-Meteo JSON parse failed.");
@@ -3518,6 +3589,11 @@ void fetch_and_update_weather() {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("WiFi no longer connected; reconnecting asynchronously.");
     WiFi.reconnect();
+    return;
+  }
+
+  if (weather_provider == WEATHER_PROVIDER_OPEN_METEO) {
+    fetch_open_meteo_weather();
     return;
   }
 
@@ -3563,6 +3639,7 @@ void fetch_and_update_weather() {
   }
 
   JsonArray daily = doc["daily"].as<JsonArray>();
+  int valid_daily_points = 0;
   for (int i = 0; i < FORECAST_POINT_COUNT; i++) {
     if (i >= daily.size()) {
       Serial.printf("QWeather daily point %d missing.\n", i);
@@ -3582,6 +3659,13 @@ void fetch_and_update_weather() {
     candidate.daily[i].month = static_cast<uint8_t>(atoi(date + 5));
     candidate.daily[i].day = static_cast<uint8_t>(atoi(date + 8));
     candidate.daily[i].valid = true;
+    valid_daily_points++;
+  }
+
+  if (valid_daily_points == 0) {
+    Serial.println("QWeather daily forecast incomplete; using Open-Meteo fallback.");
+    fetch_open_meteo_weather();
+    return;
   }
 
   if (!request_qweather(String("/v7/weather/24h?location=") + location_query, doc)) {
@@ -3591,6 +3675,7 @@ void fetch_and_update_weather() {
   }
 
   JsonArray hourly = doc["hourly"].as<JsonArray>();
+  int valid_hourly_points = 0;
   for (int i = 0; i < FORECAST_POINT_COUNT; i++) {
     if (i >= hourly.size()) {
       Serial.printf("QWeather hourly point %d missing.\n", i);
@@ -3614,6 +3699,13 @@ void fetch_and_update_weather() {
           hourly[i]["pop"].as<float>();
     }
     candidate.hourly[i].valid = true;
+    valid_hourly_points++;
+  }
+
+  if (valid_hourly_points == 0) {
+    Serial.println("QWeather hourly forecast incomplete; using Open-Meteo fallback.");
+    fetch_open_meteo_weather();
+    return;
   }
 
   configTime(8 * 3600, 0, "pool.ntp.org", "time.nist.gov");

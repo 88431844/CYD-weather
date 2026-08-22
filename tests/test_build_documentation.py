@@ -47,6 +47,16 @@ class BuildDocumentationTests(unittest.TestCase):
         ):
             self.assertIn(fact, README)
 
+    def test_readme_documents_weather_provider_behavior(self):
+        for fact in (
+            "Open-Meteo",
+            "无需 API Key",
+            "默认天气源",
+            "和风天气",
+            "可选天气源",
+        ):
+            self.assertIn(fact, README)
+
 
 if __name__ == "__main__":
     unittest.main()

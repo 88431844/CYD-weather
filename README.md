@@ -36,6 +36,12 @@ https://makerworld.com/en/models/1382304-aura-smart-weather-forecast-display
 
 界面支持英语、西班牙语、德语、法语、土耳其语、瑞典语、意大利语和简体中文。
 
+### 天气数据源
+
+Open-Meteo 是默认天气源，无需 API Key，可提供当前天气、七日预报和小时级天气。
+和风天气作为可选天气源，可在设置中选择并配置 API Key；缺少 Key 或请求失败时，
+Aura 会自动使用 Open-Meteo 完成当前刷新。
+
 ### 显示方向与主题
 
 在 Aura 设置的“显示设置”中可选择 0°、90°、180° 或 270°。0°/180°

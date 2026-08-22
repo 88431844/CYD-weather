@@ -239,6 +239,30 @@ class SettingsLayoutAndSoundTests(unittest.TestCase):
         self.assertIn("sound_enabled", TRANSLATIONS)
         self.assertIn("sound_effect", TRANSLATIONS)
 
+    def test_weather_provider_selector_is_bounded_and_theme_aware(self):
+        settings = WEATHER[
+            WEATHER.index("void create_settings_window() {") :
+            WEATHER.index("static void settings_event_handler(lv_event_t *e) {")
+        ]
+        for contract in (
+            "lv_obj_t *provider_row = create_row(42)",
+            "weather_provider_dropdown = lv_dropdown_create(provider_row)",
+            "lv_dropdown_set_selected(weather_provider_dropdown, weather_provider)",
+            "lv_obj_set_width(weather_provider_dropdown, 132)",
+            "apply_dropdown_theme(weather_provider_dropdown)",
+            "LV_EVENT_VALUE_CHANGED",
+        ):
+            self.assertIn(contract, settings)
+
+        clear = WEATHER[
+            WEATHER.index("static void clear_screen_object_references() {") :
+            WEATHER.index(
+                "static void rebuild_ui",
+                WEATHER.index("static void clear_screen_object_references() {")
+            )
+        ]
+        self.assertIn("weather_provider_dropdown = nullptr;", clear)
+
     def test_settings_close_control_is_in_the_header(self):
         settings = WEATHER[WEATHER.index("void create_settings_window() {") :]
         self.assertIn("btn_close_obj = lv_btn_create(header)", settings)

@@ -49,6 +49,7 @@ struct LocalizedStrings {
   const char* sound_enabled;
   const char* sound_effect;
   const char* sound_effect_options;
+  const char* weather_provider;
   const char* qweather_config;
   const char* qweather_config_status;
   const char* device_ip;
@@ -97,7 +98,7 @@ static const LocalizedStrings strings_en = {
   "Touch Calibration", "Press each target in order.\nHold until accepted.",
   "Point %d/5", "Cancel Calibration", "Touch calibration complete.",
   "Touch calibration failed; previous settings kept.",
-  "Sound:", "Effect:", "Classic\nSoft\nDouble\nLow", "Configure QWeather",
+  "Sound:", "Effect:", "Classic\nSoft\nDouble\nLow", "Weather provider:", "Configure QWeather",
   "QWeather API Key configuration is active.\nConnect to the Aura hotspot and open 192.168.4.1.",
   "IP:", "Source:", "Updated:", "QWeather", "Open-Meteo",
   "Display", "Theme", "Orientation", "Correct touch",
@@ -138,7 +139,7 @@ static const LocalizedStrings strings_es = {
   "Calibración táctil", "Pulse cada objetivo en orden.\nMantenga pulsado hasta aceptar.",
   "Punto %d/5", "Cancelar calibración", "Calibración táctil completa.",
   "Calibración fallida; se conservaron los ajustes anteriores.",
-  "Sonido:", "Efecto:", "Clásico\nSuave\nDoble\nGrave", "Configurar QWeather",
+  "Sonido:", "Efecto:", "Clásico\nSuave\nDoble\nGrave", "Proveedor:", "Configurar QWeather",
   "La configuración de la clave API de QWeather está activa.\nConéctese al punto de acceso Aura y abra 192.168.4.1.",
   "IP:", "Source:", "Updated:", "QWeather", "Open-Meteo",
   "Pantalla", "Tema", "Orientación", "Corregir toque",
@@ -181,7 +182,7 @@ static const LocalizedStrings strings_de = {
   "Touchscreen kalibrieren", "Drücken Sie die Ziele der Reihe nach.\nHalten Sie bis zur Bestätigung.",
   "Punkt %d/5", "Kalibrierung abbrechen", "Touchscreen kalibriert.",
   "Kalibrierung fehlgeschlagen; alte Einstellungen behalten.",
-  "Ton:", "Effekt:", "Klassisch\nSanft\nDoppelt\nTief", "QWeather konfigurieren",
+  "Ton:", "Effekt:", "Klassisch\nSanft\nDoppelt\nTief", "Wetterdienst:", "QWeather konfigurieren",
   "Die QWeather-API-Schlüsselkonfiguration ist aktiv.\nVerbinden Sie sich mit dem Aura-Hotspot und öffnen Sie 192.168.4.1.",
   "IP:", "Quelle:", "Aktualisiert:", "QWeather", "Open-Meteo",
   "Anzeige", "Thema", "Ausrichtung", "Touch korrigieren",
@@ -224,7 +225,7 @@ static const LocalizedStrings strings_fr = {
   "Calibration tactile", "Touchez chaque cible dans l'ordre.\nMaintenez jusqu'à validation.",
   "Point %d/5", "Annuler la calibration", "Calibration tactile terminée.",
   "Échec de la calibration; anciens réglages conservés.",
-  "Son:", "Effet:", "Classique\nDoux\nDouble\nGrave", "Configurer QWeather",
+  "Son:", "Effet:", "Classique\nDoux\nDouble\nGrave", "Service météo :", "Configurer QWeather",
   "La configuration de la clé API QWeather est active.\nConnectez-vous au point d'accès Aura et ouvrez 192.168.4.1.",
   "IP:", "Source :", "Mis à jour :", "QWeather", "Open-Meteo",
   "Affichage", "Thème", "Orientation", "Corriger le tactile",
@@ -264,7 +265,7 @@ static const LocalizedStrings strings_tr = {
   "Dokunmatik kalibrasyonu", "Hedeflere sırayla basın.\nKabul edilene kadar basılı tutun.",
   "Nokta %d/5", "Kalibrasyonu iptal et", "Dokunmatik kalibrasyonu tamamlandı.",
   "Kalibrasyon başarısız; önceki ayarlar korundu.",
-  "Ses:", "Efekt:", "Klasik\nYumuşak\nÇift\nDüşük", "QWeather yapılandır",
+  "Ses:", "Efekt:", "Klasik\nYumuşak\nÇift\nDüşük", "Hava durumu:", "QWeather yapılandır",
   "QWeather API anahtarı yapılandırması etkin.\nAura erişim noktasına bağlanın ve 192.168.4.1 adresini açın.",
   "IP:", "Kaynak:", "Güncellendi:", "QWeather", "Open-Meteo",
   "Ekran", "Tema", "Yön", "Dokunmayı düzelt",
@@ -308,7 +309,7 @@ static const LocalizedStrings strings_sv = {
   "Pekskärmskalibrering", "Tryck på varje mål i ordning.\nHåll tills det godkänns.",
   "Punkt %d/5", "Avbryt kalibrering", "Pekskärmen är kalibrerad.",
   "Kalibrering misslyckades; tidigare inställningar behölls.",
-  "Ljud:", "Effekt:", "Klassisk\nMjuk\nDubbel\nLåg", "Konfigurera QWeather",
+  "Ljud:", "Effekt:", "Klassisk\nMjuk\nDubbel\nLåg", "Väderkälla:", "Konfigurera QWeather",
   "Konfigurationen av QWeather API-nyckeln är aktiv.\nAnslut till Aura-hotspoten och öppna 192.168.4.1.",
   "IP:", "Källa:", "Uppdaterad:", "QWeather", "Open-Meteo",
   "Skärm", "Tema", "Riktning", "Korrigera touch",
@@ -347,7 +348,7 @@ static const LocalizedStrings strings_it = {
   "Calibrazione touch", "Premi ogni obiettivo in ordine.\nTieni premuto fino all'accettazione.",
   "Punto %d/5", "Annulla calibrazione", "Calibrazione touch completata.",
   "Calibrazione fallita; impostazioni precedenti mantenute.",
-  "Suono:", "Effetto:", "Classico\nMorbido\nDoppio\nBasso", "Configura QWeather",
+  "Suono:", "Effetto:", "Classico\nMorbido\nDoppio\nBasso", "Servizio meteo:", "Configura QWeather",
   "La configurazione della chiave API QWeather è attiva.\nConnettiti all'hotspot Aura e apri 192.168.4.1.",
   "IP:", "Fonte:", "Aggiornato:", "QWeather", "Open-Meteo",
   "Schermo", "Tema", "Orientamento", "Correggi tocco",
@@ -382,7 +383,7 @@ static const LocalizedStrings strings_zh = {
   "屏幕校验", "请长按每个校验点，直到确认通过。",
   "校验点 %d/5", "取消", "屏幕校验",
   "重调，设置",
-  "声音:", "效果:", "经典\n柔和\n双音\n低沉", "和风天气API Key配置",
+  "声音:", "效果:", "经典\n柔和\n双音\n低沉", "天气源:", "和风天气API Key配置",
   "正在配置天气 API Key。\n请连接 Aura 热点，访问 192.168.4.1 完成配置。",
   "IP:", "天气源:", "更新时间:", "和风天气", "Open-Meteo",
   "显示设置", "主题", "屏幕方向", "自动校正触摸",

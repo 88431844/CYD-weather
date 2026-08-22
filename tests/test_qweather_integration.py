@@ -17,6 +17,57 @@ def function_body(signature: str, next_signature: str) -> str:
 
 
 class QWeatherIntegrationTests(unittest.TestCase):
+    def test_open_meteo_is_the_validated_default_provider(self):
+        self.assertRegex(
+            WEATHER,
+            r"enum\s+WeatherProvider\s*:\s*uint8_t\s*\{\s*"
+            r"WEATHER_PROVIDER_OPEN_METEO\s*=\s*0\s*,\s*"
+            r"WEATHER_PROVIDER_QWEATHER\s*=\s*1\s*\}",
+        )
+        self.assertRegex(
+            WEATHER,
+            r"static\s+WeatherProvider\s+weather_provider\s*=\s*"
+            r"WEATHER_PROVIDER_OPEN_METEO",
+        )
+        self.assertIn(
+            'prefs.getUInt("weatherProvider", WEATHER_PROVIDER_OPEN_METEO)',
+            WEATHER,
+        )
+        self.assertIn("static WeatherProvider validated_weather_provider", WEATHER)
+        validator_start = WEATHER.index(
+            "static WeatherProvider validated_weather_provider"
+        )
+        validator_end = WEATHER.index("static WeatherProvider weather_provider")
+        validator = WEATHER[validator_start:validator_end]
+        self.assertIn("WEATHER_PROVIDER_QWEATHER", validator)
+        self.assertIn("WEATHER_PROVIDER_OPEN_METEO", validator)
+
+    def test_fetch_dispatches_open_meteo_before_qweather(self):
+        fetch = WEATHER[
+            WEATHER.rindex("void fetch_and_update_weather() {") :
+            WEATHER.index("const lv_img_dsc_t* choose_image")
+        ]
+        dispatch = "weather_provider == WEATHER_PROVIDER_OPEN_METEO"
+        self.assertIn(dispatch, fetch)
+        self.assertLess(fetch.index(dispatch), fetch.index("strlen(qweather_key)"))
+        open_meteo_call = fetch.index("fetch_open_meteo_weather();", fetch.index(dispatch))
+        self.assertLess(open_meteo_call, fetch.index("strlen(qweather_key)"))
+
+    def test_provider_validator_has_an_arduino_safe_explicit_prototype(self):
+        prototype = (
+            "static WeatherProvider "
+            "validated_weather_provider(uint32_t value);"
+        )
+        self.assertIn(prototype, WEATHER)
+        enum_start = WEATHER.index("enum WeatherProvider : uint8_t")
+        enum_end = WEATHER.index("};", enum_start)
+        declaration = WEATHER.index(prototype)
+        definition = WEATHER.index(
+            "static WeatherProvider validated_weather_provider(uint32_t value) {"
+        )
+        self.assertLess(enum_end, declaration)
+        self.assertLess(declaration, definition)
+
     def test_weather_snapshot_is_the_single_publish_and_render_contract(self):
         self.assertIn('#include "forecast_model.h"', WEATHER)
         self.assertRegex(
@@ -200,6 +251,34 @@ class QWeatherIntegrationTests(unittest.TestCase):
         self.assertIn("candidate.hourly[i].valid = true;", hourly_guard)
         self.assertNotIn("break;", hourly_guard)
 
+    def test_open_meteo_rejects_wholly_unusable_forecast_sections(self):
+        parser = function_body(
+            "static void fetch_open_meteo_weather() {",
+            "void fetch_and_update_weather()",
+        )
+        for counter in ("valid_daily_points", "valid_hourly_points"):
+            self.assertIn(f"int {counter} = 0;", parser)
+            self.assertIn(f"{counter}++;", parser)
+        rejection = (
+            "if (valid_daily_points == 0 || valid_hourly_points == 0)"
+        )
+        self.assertIn(rejection, parser)
+        self.assertLess(parser.index(rejection), parser.index("publish_weather_snapshot"))
+
+    def test_qweather_falls_back_when_forecast_sections_have_no_valid_points(self):
+        fetch = WEATHER[
+            WEATHER.rindex("void fetch_and_update_weather() {") :
+            WEATHER.index("const lv_img_dsc_t* choose_image")
+        ]
+        for counter in ("valid_daily_points", "valid_hourly_points"):
+            self.assertIn(f"int {counter} = 0;", fetch)
+            self.assertIn(f"{counter}++;", fetch)
+            guard = f"if ({counter} == 0)"
+            self.assertIn(guard, fetch)
+            guard_start = fetch.index(guard)
+            fallback = fetch.index("fetch_open_meteo_weather();", guard_start)
+            self.assertLess(fallback - guard_start, 240)
+
     def test_qweather_accumulates_three_endpoints_and_publishes_once(self):
         parser = function_body(
             "void fetch_and_update_weather() {",
@@ -241,7 +320,7 @@ class QWeatherIntegrationTests(unittest.TestCase):
         )
         daily_loop = parser[
             parser.index("for (int i = 0; i < FORECAST_POINT_COUNT; i++)") :
-            parser.index('/v7/weather/24h')
+            parser.index("if (valid_daily_points == 0)")
         ]
         self.assertIn("if (i >= daily.size())", daily_loop)
         self.assertGreaterEqual(daily_loop.count("continue;"), 2)
@@ -256,6 +335,7 @@ class QWeatherIntegrationTests(unittest.TestCase):
         )
         hourly_loop = parser[
             parser.index("for (int i = 0; i < FORECAST_POINT_COUNT; i++)", parser.index('/v7/weather/24h')) :
+            parser.index("if (valid_hourly_points == 0)")
         ]
         self.assertIn("if (i >= hourly.size())", hourly_loop)
         self.assertGreaterEqual(hourly_loop.count("continue;"), 2)
@@ -351,6 +431,44 @@ class QWeatherIntegrationTests(unittest.TestCase):
             "prefs.putString(\"qweatherKey\"",
         ):
             self.assertIn(symbol, WEATHER)
+
+    def test_settings_selects_and_persists_weather_provider(self):
+        for symbol in (
+            "weather_provider_dropdown",
+            "strings->weather_provider",
+            "strings->open_meteo_name",
+            "strings->qweather_name",
+            'prefs.putUInt("weatherProvider", weather_provider)',
+            "lv_dropdown_get_selected(weather_provider_dropdown)",
+        ):
+            self.assertIn(symbol, WEATHER)
+
+        handler = function_body(
+            "static void settings_event_handler(lv_event_t *e) {",
+            "static void configure_click_tone",
+        )
+        branch_start = handler.index("if (tgt == weather_provider_dropdown")
+        branch_end = handler.index("if (tgt == unit_switch", branch_start)
+        provider_branch = handler[branch_start:branch_end]
+        self.assertNotIn("fetch_and_update_weather();", provider_branch)
+        self.assertIn("weather_refresh_requested = true;", provider_branch)
+        self.assertIn("WEATHER_PROVIDER_QWEATHER", provider_branch)
+        self.assertIn("strlen(qweather_key) == 0", provider_branch)
+        self.assertIn("open_qweather_config_portal();", provider_branch)
+
+        loop = function_body("void loop() {", "static lv_color_t theme_color")
+        self.assertIn("if (weather_refresh_requested)", loop)
+        self.assertIn("weather_refresh_requested = false;", loop)
+        self.assertIn("fetch_and_update_weather();", loop)
+        self.assertLess(
+            loop.index("process_qweather_config_portal();"),
+            loop.index("if (weather_refresh_requested)"),
+        )
+
+    def test_weather_provider_label_is_localized(self):
+        self.assertIn("const char* weather_provider;", TRANSLATIONS)
+        self.assertIn('"Weather provider:"', TRANSLATIONS)
+        self.assertIn('"天气源:"', TRANSLATIONS)
 
     def test_weather_fetch_uses_qweather_endpoints_and_schema(self):
         fetch = WEATHER[WEATHER.rindex("void fetch_and_update_weather()") : WEATHER.index("const lv_img_dsc_t* choose_image")]
