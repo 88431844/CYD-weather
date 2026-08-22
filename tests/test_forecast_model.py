@@ -15,6 +15,7 @@ class ForecastModelTests(unittest.TestCase):
     def run_cpp(self, body):
         source = f'''#include "forecast_model.h"
 #include <cmath>
+#include <limits>
 
 int main() {{
 {body}
@@ -165,6 +166,79 @@ int main() {{
   if (maximum - minimum < 4) return 4;
   if (padded_chart_range(10.0f, 10.0f, nullptr, &maximum)) return 5;
   if (padded_chart_range(10.0f, 10.0f, &minimum, nullptr)) return 6;
+  return 0;
+''')
+
+    def test_daily_range_normalizes_each_reversed_valid_point(self):
+        self.run_cpp(r'''
+  WeatherSnapshot snapshot = {};
+  snapshot.daily[0] = {30.0f, 20.0f, 100, 8, 22, true};
+  snapshot.daily[1] = {25.0f, 26.0f, 100, 8, 23, true};
+  int minimum = 0;
+  int maximum = 0;
+  if (!daily_chart_range(snapshot, &minimum, &maximum)) return 1;
+  if (minimum != 18 || maximum != 32) return 2;
+  return 0;
+''')
+
+    def test_fractional_negative_daily_range_uses_floor_and_ceil(self):
+        self.run_cpp(r'''
+  WeatherSnapshot snapshot = {};
+  snapshot.daily[0] = {-6.4f, -1.2f, 100, 8, 22, true};
+  int minimum = 0;
+  int maximum = 0;
+  if (!daily_chart_range(snapshot, &minimum, &maximum)) return 1;
+  if (minimum != -9 || maximum != 1) return 2;
+  return 0;
+''')
+
+    def test_non_finite_and_unrepresentable_ranges_fail_without_writing(self):
+        self.run_cpp(r'''
+  int minimum = 1234;
+  int maximum = 5678;
+  const float nan_value = std::numeric_limits<float>::quiet_NaN();
+  const float infinity = std::numeric_limits<float>::infinity();
+  const float float_max = std::numeric_limits<float>::max();
+  if (padded_chart_range(nan_value, 10.0f, &minimum, &maximum)) return 1;
+  if (minimum != 1234 || maximum != 5678) return 2;
+  if (padded_chart_range(-infinity, infinity, &minimum, &maximum)) return 3;
+  if (minimum != 1234 || maximum != 5678) return 4;
+  if (padded_chart_range(float_max, float_max, &minimum, &maximum)) return 5;
+  if (minimum != 1234 || maximum != 5678) return 6;
+
+  WeatherSnapshot daily_snapshot = {};
+  daily_snapshot.daily[0] = {nan_value, 10.0f, 100, 8, 22, true};
+  minimum = 1234;
+  maximum = 5678;
+  if (daily_chart_range(daily_snapshot, &minimum, &maximum)) return 7;
+  if (minimum != 1234 || maximum != 5678) return 8;
+
+  WeatherSnapshot hourly_snapshot = {};
+  hourly_snapshot.hourly[0] = {infinity, 0.0f, 100, 8, true, false, true};
+  minimum = 1234;
+  maximum = 5678;
+  if (hourly_chart_range(hourly_snapshot, &minimum, &maximum)) return 9;
+  if (minimum != 1234 || maximum != 5678) return 10;
+  return 0;
+''')
+
+    def test_extreme_int_neighborhoods_avoid_overflow_and_reject_unpaddable(self):
+        self.run_cpp(r'''
+  const float negative = -2147483520.0f;
+  const float positive = 2147483520.0f;
+  int minimum = 0;
+  int maximum = 0;
+  if (!padded_chart_range(negative, positive, &minimum, &maximum)) return 1;
+  if (minimum != -2147483522 || maximum != 2147483522) return 2;
+
+  const float int_min_value = -2147483648.0f;
+  const float int_max_value = 2147483648.0f;
+  minimum = 1234;
+  maximum = 5678;
+  if (padded_chart_range(int_min_value, int_min_value, &minimum, &maximum)) return 3;
+  if (minimum != 1234 || maximum != 5678) return 4;
+  if (padded_chart_range(int_max_value, int_max_value, &minimum, &maximum)) return 5;
+  if (minimum != 1234 || maximum != 5678) return 6;
   return 0;
 ''')
 
