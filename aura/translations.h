@@ -11,6 +11,8 @@ struct LocalizedStrings {
   const char* feels_like_temp;
   const char* seven_day_forecast;
   const char* hourly_forecast;
+  const char* daily_tab;
+  const char* hourly_tab;
   const char* today;
   const char* now;
   const char* am;
@@ -65,6 +67,7 @@ struct LocalizedStrings {
 
 static const LocalizedStrings strings_en = {
   "--°C", "Feels Like", "SEVEN DAY FORECAST", "HOURLY FORECAST",
+  "7 days", "Hours",
   "Today", "Now", "am", "pm", "Noon", "Invalid hour",
   "Brightness:", "Location:", "Use °F:", "24hr:",
   "Save", "Cancel", "Close", "Location", "Reset Wi-Fi",
@@ -103,6 +106,7 @@ static const LocalizedStrings strings_en = {
 
 static const LocalizedStrings strings_es = {
   "--°C", "Sensación", "PRONÓSTICO 7 DÍAS", "PRONÓSTICO POR HORAS",
+  "7 días", "Horas",
   "Hoy", "Ahora", "am", "pm", "Mediodía", "Hora inválida",
   "Brillo:", "Ubicación:", "Usar °F:", "24h:",
   "Guardar", "Cancelar", "Cerrar", "Ubicación", "Wi-Fi",
@@ -143,6 +147,7 @@ static const LocalizedStrings strings_es = {
 
 static const LocalizedStrings strings_de = {
   "--°C", "Gefühlt", "7-TAGE VORHERSAGE", "STÜNDLICHE VORHERSAGE",
+  "7 Tage", "Std.",
   "Heute", "Jetzt", "", "", "Mittag", "Ungültige Stunde",
   "Helligkeit:", "Standort:", "°F:", "24h:",
   "Speichern", "Abbrechen", "Schließen", "Standort", "Wi-Fi",
@@ -185,6 +190,7 @@ static const LocalizedStrings strings_de = {
 
 static const LocalizedStrings strings_fr = {
   "--°C", "Ressenti", "PRÉVISIONS 7 JOURS", "PRÉVISIONS HORAIRES",
+  "7 jours", "Heures",
   "Aujourd'hui", "Maintenant", "h", "h", "Midi", "Heure invalide",
   "Luminosité:", "Lieu:", "Utiliser °F:", "24h:",
   "Sauvegarder", "Annuler", "Fermer", "Lieu", "Wi-Fi",
@@ -227,6 +233,7 @@ static const LocalizedStrings strings_fr = {
 
 static const LocalizedStrings strings_tr = {
   "--°C", "Hissedilen", "YEDI GÜNLÜK TAHMIN", "SAATLIK TAHMIN",
+  "7 gün", "Saat",
   "Bugün", "Simdi", "öö", "ös", "Öğle", "Geçersiz saat",
   "Parlaklik:", "Konum:", "°F Kullan:", "24 Saat:",
   "Kaydet", "İptal", "Kapat", "Konum", "Wi-Fi Sifirla",
@@ -266,6 +273,7 @@ static const LocalizedStrings strings_tr = {
 
 static const LocalizedStrings strings_sv = {
   "--°C", "Känns som", "7-DAGARS PROGNOS", "TIMPROGNOS",
+  "7 dygn", "Tim",
   "Idag", "Nu", "", "", "Middag", "Ogiltig timme",
   "Ljusstyrka:", "Plats:", "Använd °F:", "24h:",
   "Spara", "Avbryt", "Stäng", "Plats", "Aterställ Wi-Fi",
@@ -309,6 +317,7 @@ static const LocalizedStrings strings_sv = {
 
 static const LocalizedStrings strings_it = {
   "--°C", "Percepita", "PREVISIONI A 7 GIORNI", "PREVISIONI ORARIE",
+  "7 gg", "Ore",
   "Oggi", "Ora", "am", "pm", "Mezzog.", "Ora non valida",
   "Luminosità:", "Posizione:", "Utilizzo °F:", "24hr:",
   "Salva", "Cancellare", "Close", "Posizione", "Resetta Wi-Fi",
@@ -347,6 +356,7 @@ static const LocalizedStrings strings_it = {
 
 static const LocalizedStrings strings_zh = {
   "--°C", "体感温度", "七日天气预报", "小时天气预报",
+  "7天", "小时",
   "今天", "现在", "上午", "下午", "中午", "无效时间",
   "亮度:", "位置:", "使用 °F:", "24小时:",
   "保存", "取消", "关闭", "位置", "重置 Wi-Fi",

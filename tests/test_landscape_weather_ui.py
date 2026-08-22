@@ -105,7 +105,7 @@ class LandscapeWeatherUiTests(unittest.TestCase):
             "static void create_forecast_segmented_control",
         )
         for symbol in (
-            "lbl_loc",
+            "lbl_home_location",
             "lbl_network_status",
             "lbl_update_status",
             "lbl_today_temp",
@@ -117,8 +117,10 @@ class LandscapeWeatherUiTests(unittest.TestCase):
             "static void create_forecast_segmented_control(lv_obj_t *scr) {",
             "static void create_daily_chart",
         )
-        self.assertIn("strings->seven_day_forecast", segmented)
-        self.assertIn("strings->hourly_forecast", segmented)
+        self.assertIn("strings->daily_tab", segmented)
+        self.assertIn("strings->hourly_tab", segmented)
+        self.assertNotIn("strings->seven_day_forecast", segmented)
+        self.assertNotIn("strings->hourly_forecast", segmented)
         self.assertIn("select_daily_cb", segmented)
         self.assertIn("select_hourly_cb", segmented)
         self.assertIn("LV_SYMBOL_SETTINGS", segmented)
@@ -162,11 +164,25 @@ class LandscapeWeatherUiTests(unittest.TestCase):
 
     def test_renderer_converts_chart_values_ranges_and_labels_to_same_unit(self):
         conversion = function_body(
-            "static float temperature_for_display(float celsius) {",
-            "static bool daily_display_chart_range",
+            "static bool safe_chart_temperature(",
+            "static void prepare_landscape_chart_points",
         )
         self.assertIn("use_fahrenheit", conversion)
-        self.assertIn("celsius * 9.0f / 5.0f + 32.0f", conversion)
+        self.assertIn("static_cast<double>(celsius)", conversion)
+        self.assertIn("source * 9.0 / 5.0 + 32.0", conversion)
+        self.assertGreaterEqual(conversion.count("isfinite("), 3)
+        self.assertIn("round(display)", conversion)
+        self.assertIn("INT32_MIN", conversion)
+        self.assertIn("INT32_MAX", conversion)
+        self.assertIn("LV_CHART_POINT_NONE", conversion)
+
+        preparation = function_body(
+            "static void prepare_landscape_chart_points() {",
+            "static bool daily_display_chart_range",
+        )
+        self.assertIn("daily_point_renderable[i] =", preparation)
+        self.assertGreaterEqual(preparation.count("safe_chart_temperature("), 3)
+        self.assertIn("hourly_point_renderable[i] =", preparation)
 
         daily_range = function_body(
             "static bool daily_display_chart_range",
@@ -176,8 +192,8 @@ class LandscapeWeatherUiTests(unittest.TestCase):
             "static bool hourly_display_chart_range",
             "static void render_landscape_snapshot",
         )
-        self.assertGreaterEqual(daily_range.count("temperature_for_display("), 2)
-        self.assertGreaterEqual(hourly_range.count("temperature_for_display("), 1)
+        self.assertIn("daily_point_renderable[i]", daily_range)
+        self.assertIn("hourly_point_renderable[i]", hourly_range)
         self.assertIn("padded_chart_range", daily_range)
         self.assertIn("padded_chart_range", hourly_range)
 
@@ -185,13 +201,10 @@ class LandscapeWeatherUiTests(unittest.TestCase):
             "static void render_landscape_snapshot() {",
             "static void set_object_hidden(",
         )
-        for assignment in (
-            "daily_high_values[i] = daily.valid",
-            "daily_low_values[i] = daily.valid",
-            "hourly_temperature_values[i] = hourly.valid",
-        ):
-            self.assertIn(assignment, renderer)
-        self.assertGreaterEqual(renderer.count("temperature_for_display("), 5)
+        self.assertIn("prepare_landscape_chart_points();", renderer)
+        for renderable in ("daily_point_renderable[i]", "hourly_point_renderable[i]"):
+            self.assertIn(renderable, renderer)
+        self.assertNotIn("lroundf(", renderer)
         self.assertIn("daily_display_chart_range(&range_min, &range_max)", renderer)
         self.assertIn("hourly_display_chart_range(&range_min, &range_max)", renderer)
         self.assertEqual(renderer.count("lv_chart_set_range"), 2)
@@ -202,7 +215,11 @@ class LandscapeWeatherUiTests(unittest.TestCase):
             "static void set_object_hidden(",
         )
         self.assertGreaterEqual(renderer.count("weather_condition_name("), 2)
-        self.assertGreaterEqual(renderer.count("LV_CHART_POINT_NONE"), 3)
+        preparation = function_body(
+            "static void prepare_landscape_chart_points() {",
+            "static bool daily_display_chart_range",
+        )
+        self.assertGreaterEqual(preparation.count("LV_CHART_POINT_NONE"), 5)
         for symbol in (
             "landscape_daily_dates",
             "landscape_daily_icons",
@@ -214,7 +231,15 @@ class LandscapeWeatherUiTests(unittest.TestCase):
             "landscape_hourly_conditions",
             "hourly_temperature_labels",
         ):
-            self.assertIn(f"set_object_hidden({symbol}[i], !", renderer)
+            renderable = (
+                "daily_point_renderable[i]"
+                if symbol.startswith("landscape_daily") or symbol.startswith("daily_")
+                else "hourly_point_renderable[i]"
+            )
+            self.assertRegex(
+                renderer,
+                rf"set_object_hidden\(\s*{symbol}\[i\],\s*!{re.escape(renderable)}\)",
+            )
         self.assertIn("hourly.has_precipitation", renderer)
         self.assertIn('"%s\\n%.0f%%"', renderer)
 
@@ -233,6 +258,25 @@ class LandscapeWeatherUiTests(unittest.TestCase):
             placement,
             r"constrain\([\s\S]*LANDSCAPE_HEADER_HEIGHT\s*,\s*maximum_y\)",
         )
+
+        positions = function_body(
+            "static void position_chart_temperature_labels() {",
+            "static void render_weather_snapshot",
+        )
+        self.assertIn("daily_point_renderable[i]", positions)
+        self.assertIn("hourly_point_renderable[i]", positions)
+        self.assertNotIn("weather_snapshot.daily[i].valid", positions)
+        self.assertNotIn("weather_snapshot.hourly[i].valid", positions)
+
+    def test_forecast_view_hides_unsafe_points_even_when_snapshot_marks_them_valid(self):
+        view = function_body(
+            "static void set_forecast_view(ForecastView view) {",
+            "static void select_daily_cb",
+        )
+        self.assertIn("daily_point_renderable[i]", view)
+        self.assertIn("hourly_point_renderable[i]", view)
+        self.assertNotIn("weather_snapshot.daily[i].valid", view)
+        self.assertNotIn("weather_snapshot.hourly[i].valid", view)
 
     def test_landscape_segment_buttons_select_instead_of_toggle(self):
         daily = function_body("static void select_daily_cb", "static void select_hourly_cb")

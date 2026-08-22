@@ -79,7 +79,10 @@ class SettingsLayoutAndSoundTests(unittest.TestCase):
 
     def test_settings_content_is_scrollable_and_rows_are_stable(self):
         settings = WEATHER[WEATHER.index("void create_settings_window() {") :]
-        self.assertIn("lv_obj_set_size(settings_win, SCREEN_WIDTH, SCREEN_HEIGHT)", settings)
+        self.assertIn(
+            "lv_obj_set_size(settings_win, display_width(), display_height())",
+            settings,
+        )
         self.assertRegex(settings, r"lv_obj_set_scroll_dir\(cont, LV_DIR_VER\)")
         self.assertIn("lv_obj_clear_flag(settings_win, LV_OBJ_FLAG_SCROLLABLE)", settings)
         self.assertIn("lv_obj_clear_flag(header, LV_OBJ_FLAG_SCROLLABLE)", settings)
@@ -88,6 +91,50 @@ class SettingsLayoutAndSoundTests(unittest.TestCase):
         self.assertNotIn("lv_obj_set_width(row, 214)", settings)
         self.assertNotIn("lv_obj_align_to(lbl_24hr, unit_switch, LV_ALIGN_OUT_RIGHT_MID", settings)
         self.assertNotIn("lv_obj_align_to(btn_reset, btn_change_loc, LV_ALIGN_OUT_RIGHT_MID", settings)
+
+    def test_location_dialog_uses_current_logical_display_size(self):
+        start = WEATHER.index("void create_location_dialog() {")
+        dialog = WEATHER[
+            start : WEATHER.index("void create_settings_window()", start)
+        ]
+        self.assertIn(
+            "lv_obj_set_size(location_win, display_width(), display_height())",
+            dialog,
+        )
+        self.assertNotIn("lv_obj_set_size(location_win, 240, 320)", dialog)
+
+    def test_home_and_settings_location_labels_have_independent_lifetimes(self):
+        self.assertRegex(WEATHER, r"static\s+lv_obj_t\s+\*lbl_home_location")
+        self.assertRegex(WEATHER, r"static\s+lv_obj_t\s+\*lbl_settings_location")
+        self.assertNotRegex(WEATHER, r"static\s+lv_obj_t\s+\*lbl_loc\s*;")
+
+        updater = WEATHER[
+            WEATHER.index("static void update_location_labels() {") :
+            WEATHER.index("static void location_save_event_cb")
+        ]
+        for label in ("lbl_home_location", "lbl_settings_location"):
+            self.assertIn(f"{label} && lv_obj_is_valid({label})", updater)
+            self.assertIn(f"lv_label_set_text({label}, location.c_str())", updater)
+
+        save = WEATHER[
+            WEATHER.index("static void location_save_event_cb") :
+            WEATHER.index("static void location_cancel_event_cb")
+        ]
+        self.assertIn("update_location_labels();", save)
+        self.assertNotIn("lv_label_set_text(lbl_loc", save)
+
+        rebuild = WEATHER[
+            WEATHER.index("static void rebuild_ui(bool reopen_settings) {") :
+            WEATHER.index("void setup()")
+        ]
+        for label in ("lbl_home_location = nullptr;", "lbl_settings_location = nullptr;"):
+            self.assertIn(label, rebuild)
+
+        settings_close = WEATHER[
+            WEATHER.index("if (tgt == btn_close_obj") :
+            WEATHER.index("static void refresh_weather_after_click_sound")
+        ]
+        self.assertIn("lbl_settings_location = nullptr;", settings_close)
 
     def test_sound_preferences_and_effect_profiles_are_wired(self):
         for key in ("soundEnabled", "soundEffect"):

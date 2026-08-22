@@ -179,7 +179,8 @@ static lv_obj_t *lbl_hourly[7];
 static lv_obj_t *lbl_precipitation_probability[7];
 static lv_obj_t *lbl_hourly_temp[7];
 static lv_obj_t *img_hourly[7];
-static lv_obj_t *lbl_loc;
+static lv_obj_t *lbl_home_location;
+static lv_obj_t *lbl_settings_location;
 static lv_obj_t *loc_ta;
 static lv_obj_t *results_dd;
 static lv_obj_t *btn_close_loc;
@@ -215,6 +216,11 @@ static lv_chart_series_t *hourly_temperature_series;
 static int32_t daily_high_values[FORECAST_POINT_COUNT];
 static int32_t daily_low_values[FORECAST_POINT_COUNT];
 static int32_t hourly_temperature_values[FORECAST_POINT_COUNT];
+static float daily_high_display_temperatures[FORECAST_POINT_COUNT];
+static float daily_low_display_temperatures[FORECAST_POINT_COUNT];
+static float hourly_display_temperatures[FORECAST_POINT_COUNT];
+static bool daily_point_renderable[FORECAST_POINT_COUNT];
+static bool hourly_point_renderable[FORECAST_POINT_COUNT];
 static lv_obj_t *landscape_daily_dates[FORECAST_POINT_COUNT];
 static lv_obj_t *landscape_daily_icons[FORECAST_POINT_COUNT];
 static lv_obj_t *landscape_daily_conditions[FORECAST_POINT_COUNT];
@@ -519,17 +525,69 @@ static float temperature_for_display(float celsius) {
   return use_fahrenheit ? celsius * 9.0f / 5.0f + 32.0f : celsius;
 }
 
+static bool safe_chart_temperature(
+    float celsius, float *out_display, int32_t *out_chart_value) {
+  if (!out_display || !out_chart_value) return false;
+
+  const double source = static_cast<double>(celsius);
+  if (!isfinite(source)) return false;
+  const double display = use_fahrenheit
+      ? source * 9.0 / 5.0 + 32.0 : source;
+  if (!isfinite(display)) return false;
+  const double rounded = round(display);
+  if (!isfinite(rounded) ||
+      rounded < static_cast<double>(INT32_MIN) ||
+      rounded > static_cast<double>(INT32_MAX)) {
+    return false;
+  }
+
+  const int32_t chart_value = static_cast<int32_t>(rounded);
+  if (chart_value == LV_CHART_POINT_NONE) return false;
+  *out_display = static_cast<float>(display);
+  *out_chart_value = chart_value;
+  return true;
+}
+
+static void prepare_landscape_chart_points() {
+  for (int i = 0; i < FORECAST_POINT_COUNT; i++) {
+    daily_point_renderable[i] = false;
+    hourly_point_renderable[i] = false;
+    daily_high_values[i] = LV_CHART_POINT_NONE;
+    daily_low_values[i] = LV_CHART_POINT_NONE;
+    hourly_temperature_values[i] = LV_CHART_POINT_NONE;
+
+    const DailyForecastPoint &daily = weather_snapshot.daily[i];
+    daily_point_renderable[i] = daily.valid &&
+        safe_chart_temperature(
+            daily.maximum, &daily_high_display_temperatures[i],
+            &daily_high_values[i]) &&
+        safe_chart_temperature(
+            daily.minimum, &daily_low_display_temperatures[i],
+            &daily_low_values[i]);
+    if (!daily_point_renderable[i]) {
+      daily_high_values[i] = LV_CHART_POINT_NONE;
+      daily_low_values[i] = LV_CHART_POINT_NONE;
+    }
+
+    const HourlyForecastPoint &hourly = weather_snapshot.hourly[i];
+    hourly_point_renderable[i] = hourly.valid &&
+        safe_chart_temperature(
+            hourly.temperature, &hourly_display_temperatures[i],
+            &hourly_temperature_values[i]);
+    if (!hourly_point_renderable[i]) {
+      hourly_temperature_values[i] = LV_CHART_POINT_NONE;
+    }
+  }
+}
+
 static bool daily_display_chart_range(int *out_minimum, int *out_maximum) {
   bool has_valid_point = false;
   float minimum = 0.0f;
   float maximum = 0.0f;
   for (int i = 0; i < FORECAST_POINT_COUNT; i++) {
-    const DailyForecastPoint &point = weather_snapshot.daily[i];
-    if (!point.valid) continue;
-
-    float point_minimum = temperature_for_display(point.minimum);
-    float point_maximum = temperature_for_display(point.maximum);
-    if (!isfinite(point_minimum) || !isfinite(point_maximum)) return false;
+    if (!daily_point_renderable[i]) continue;
+    float point_minimum = daily_low_display_temperatures[i];
+    float point_maximum = daily_high_display_temperatures[i];
     if (point_minimum > point_maximum) {
       const float swapped = point_minimum;
       point_minimum = point_maximum;
@@ -553,11 +611,8 @@ static bool hourly_display_chart_range(int *out_minimum, int *out_maximum) {
   float minimum = 0.0f;
   float maximum = 0.0f;
   for (int i = 0; i < FORECAST_POINT_COUNT; i++) {
-    const HourlyForecastPoint &point = weather_snapshot.hourly[i];
-    if (!point.valid) continue;
-
-    const float temperature = temperature_for_display(point.temperature);
-    if (!isfinite(temperature)) return false;
+    if (!hourly_point_renderable[i]) continue;
+    const float temperature = hourly_display_temperatures[i];
     if (!has_valid_point) {
       minimum = temperature;
       maximum = temperature;
@@ -595,6 +650,8 @@ static void render_landscape_snapshot() {
     lv_label_set_text(lbl_today_feels_like, strings->feels_like_temp);
   }
 
+  prepare_landscape_chart_points();
+
   int range_min = 0;
   int range_max = 0;
   if (daily_display_chart_range(&range_min, &range_max)) {
@@ -608,20 +665,15 @@ static void render_landscape_snapshot() {
 
   for (int i = 0; i < FORECAST_POINT_COUNT; i++) {
     const DailyForecastPoint &daily = weather_snapshot.daily[i];
-    const float daily_high =
-        daily.valid ? temperature_for_display(daily.maximum) : 0.0f;
-    const float daily_low =
-        daily.valid ? temperature_for_display(daily.minimum) : 0.0f;
-    daily_high_values[i] = daily.valid
-        ? static_cast<int32_t>(lroundf(daily_high)) : LV_CHART_POINT_NONE;
-    daily_low_values[i] = daily.valid
-        ? static_cast<int32_t>(lroundf(daily_low)) : LV_CHART_POINT_NONE;
-    set_object_hidden(landscape_daily_dates[i], !daily.valid);
-    set_object_hidden(landscape_daily_icons[i], !daily.valid);
-    set_object_hidden(landscape_daily_conditions[i], !daily.valid);
-    set_object_hidden(daily_high_labels[i], !daily.valid);
-    set_object_hidden(daily_low_labels[i], !daily.valid);
-    if (daily.valid) {
+    set_object_hidden(
+        landscape_daily_dates[i], !daily_point_renderable[i]);
+    set_object_hidden(
+        landscape_daily_icons[i], !daily_point_renderable[i]);
+    set_object_hidden(
+        landscape_daily_conditions[i], !daily_point_renderable[i]);
+    set_object_hidden(daily_high_labels[i], !daily_point_renderable[i]);
+    set_object_hidden(daily_low_labels[i], !daily_point_renderable[i]);
+    if (daily_point_renderable[i]) {
       lv_label_set_text_fmt(
           landscape_daily_dates[i], "%02u/%02u",
           static_cast<unsigned>(daily.month),
@@ -630,24 +682,25 @@ static void render_landscape_snapshot() {
           landscape_daily_conditions[i],
           weather_condition_name(daily.weather_code));
       lv_label_set_text_fmt(
-          daily_high_labels[i], "%.0f°%c", daily_high, unit);
+          daily_high_labels[i], "%.0f°%c",
+          daily_high_display_temperatures[i], unit);
       lv_label_set_text_fmt(
-          daily_low_labels[i], "%.0f°%c", daily_low, unit);
+          daily_low_labels[i], "%.0f°%c",
+          daily_low_display_temperatures[i], unit);
       lv_img_set_src(
           landscape_daily_icons[i], choose_icon(daily.weather_code, 1));
     }
 
     const HourlyForecastPoint &hourly = weather_snapshot.hourly[i];
-    const float hourly_temperature = hourly.valid
-        ? temperature_for_display(hourly.temperature) : 0.0f;
-    hourly_temperature_values[i] = hourly.valid
-        ? static_cast<int32_t>(lroundf(hourly_temperature))
-        : LV_CHART_POINT_NONE;
-    set_object_hidden(landscape_hourly_times[i], !hourly.valid);
-    set_object_hidden(landscape_hourly_icons[i], !hourly.valid);
-    set_object_hidden(landscape_hourly_conditions[i], !hourly.valid);
-    set_object_hidden(hourly_temperature_labels[i], !hourly.valid);
-    if (hourly.valid) {
+    set_object_hidden(
+        landscape_hourly_times[i], !hourly_point_renderable[i]);
+    set_object_hidden(
+        landscape_hourly_icons[i], !hourly_point_renderable[i]);
+    set_object_hidden(
+        landscape_hourly_conditions[i], !hourly_point_renderable[i]);
+    set_object_hidden(
+        hourly_temperature_labels[i], !hourly_point_renderable[i]);
+    if (hourly_point_renderable[i]) {
       if (i == 0) {
         lv_label_set_text(landscape_hourly_times[i], strings->now);
       } else {
@@ -666,7 +719,7 @@ static void render_landscape_snapshot() {
       }
       lv_label_set_text_fmt(
           hourly_temperature_labels[i], "%.0f°%c",
-          hourly_temperature, unit);
+          hourly_display_temperatures[i], unit);
       lv_img_set_src(
           landscape_hourly_icons[i],
           choose_icon(hourly.weather_code, hourly.is_day));
@@ -703,13 +756,13 @@ static void position_chart_temperature_labels() {
   lv_obj_update_layout(daily_chart);
   lv_obj_update_layout(hourly_chart);
   for (uint32_t i = 0; i < FORECAST_POINT_COUNT; i++) {
-    if (weather_snapshot.daily[i].valid) {
+    if (daily_point_renderable[i]) {
       place_chart_label(
           daily_high_labels[i], daily_chart, daily_high_series, i, -14);
       place_chart_label(
           daily_low_labels[i], daily_chart, daily_low_series, i, 2);
     }
-    if (weather_snapshot.hourly[i].valid) {
+    if (hourly_point_renderable[i]) {
       place_chart_label(
           hourly_temperature_labels[i], hourly_chart,
           hourly_temperature_series, i, -14);
@@ -975,6 +1028,8 @@ static void rebuild_ui(bool reopen_settings) {
   kb = nullptr;
   settings_win = nullptr;
   location_win = nullptr;
+  lbl_home_location = nullptr;
+  lbl_settings_location = nullptr;
   lv_obj_clean(lv_scr_act());
   create_ui();
   render_weather_snapshot();
@@ -1112,6 +1167,8 @@ static void restore_home_ui_after_wifi() {
   if (!wifi_splash_active) return;
 
   wifi_splash_active = false;
+  lbl_home_location = nullptr;
+  lbl_settings_location = nullptr;
   lv_obj_clean(lv_scr_act());
   create_ui();
 }
@@ -1148,6 +1205,7 @@ static void open_qweather_config_portal() {
   if (settings_win) {
     lv_obj_del(settings_win);
     settings_win = nullptr;
+    lbl_settings_location = nullptr;
   }
 
   const LocalizedStrings* strings = get_strings(current_language);
@@ -1561,6 +1619,8 @@ static void apply_msgbox_theme(lv_obj_t *mbox) {
 
 void wifi_splash_screen() {
   lv_obj_t *scr = lv_scr_act();
+  lbl_home_location = nullptr;
+  lbl_settings_location = nullptr;
   lv_obj_clean(scr);
   const ThemePalette &palette = theme_palette(current_theme);
   apply_root_theme(scr);
@@ -1748,14 +1808,14 @@ static void set_forecast_view(ForecastView view) {
     lv_obj_add_state(landscape_hourly_button, LV_STATE_CHECKED);
   }
   for (int i = 0; i < FORECAST_POINT_COUNT; i++) {
-    const bool hide_daily = !show_daily || !weather_snapshot.daily[i].valid;
+    const bool hide_daily = !show_daily || !daily_point_renderable[i];
     set_object_hidden(landscape_daily_dates[i], hide_daily);
     set_object_hidden(landscape_daily_icons[i], hide_daily);
     set_object_hidden(landscape_daily_conditions[i], hide_daily);
     set_object_hidden(daily_high_labels[i], hide_daily);
     set_object_hidden(daily_low_labels[i], hide_daily);
 
-    const bool hide_hourly = show_daily || !weather_snapshot.hourly[i].valid;
+    const bool hide_hourly = show_daily || !hourly_point_renderable[i];
     set_object_hidden(landscape_hourly_times[i], hide_hourly);
     set_object_hidden(landscape_hourly_icons[i], hide_hourly);
     set_object_hidden(landscape_hourly_conditions[i], hide_hourly);
@@ -1781,15 +1841,16 @@ static void create_landscape_header(lv_obj_t *scr) {
   const ThemePalette &palette = theme_palette(current_theme);
   const LocalizedStrings *strings = get_strings(current_language);
 
-  lbl_loc = lv_label_create(scr);
-  lv_obj_set_size(lbl_loc, 96, 15);
-  lv_obj_set_pos(lbl_loc, 6, 2);
-  lv_label_set_long_mode(lbl_loc, LV_LABEL_LONG_DOT);
-  lv_label_set_text(lbl_loc, location.c_str());
+  lbl_home_location = lv_label_create(scr);
+  lv_obj_set_size(lbl_home_location, 96, 15);
+  lv_obj_set_pos(lbl_home_location, 6, 2);
+  lv_label_set_long_mode(lbl_home_location, LV_LABEL_LONG_DOT);
+  lv_label_set_text(lbl_home_location, location.c_str());
   lv_obj_set_style_text_font(
-      lbl_loc, get_font_14(), LV_PART_MAIN | LV_STATE_DEFAULT);
+      lbl_home_location, get_font_14(), LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_text_color(
-      lbl_loc, theme_color(palette.text), LV_PART_MAIN | LV_STATE_DEFAULT);
+      lbl_home_location, theme_color(palette.text),
+      LV_PART_MAIN | LV_STATE_DEFAULT);
 
   lbl_network_status = lv_label_create(scr);
   lv_obj_set_size(lbl_network_status, 96, 13);
@@ -1865,7 +1926,7 @@ static void create_forecast_segmented_control(lv_obj_t *scr) {
   lv_obj_t *daily_label = lv_label_create(landscape_daily_button);
   lv_obj_set_width(daily_label, 38);
   lv_label_set_long_mode(daily_label, LV_LABEL_LONG_DOT);
-  lv_label_set_text(daily_label, strings->seven_day_forecast);
+  lv_label_set_text(daily_label, strings->daily_tab);
   lv_obj_set_style_text_font(
       daily_label, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_text_align(
@@ -1882,7 +1943,7 @@ static void create_forecast_segmented_control(lv_obj_t *scr) {
   lv_obj_t *hourly_label = lv_label_create(landscape_hourly_button);
   lv_obj_set_width(hourly_label, 38);
   lv_label_set_long_mode(hourly_label, LV_LABEL_LONG_DOT);
-  lv_label_set_text(hourly_label, strings->hourly_forecast);
+  lv_label_set_text(hourly_label, strings->hourly_tab);
   lv_obj_set_style_text_font(
       hourly_label, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_text_align(
@@ -2077,6 +2138,8 @@ static void create_landscape_ui(lv_obj_t *scr) {
     daily_high_values[i] = LV_CHART_POINT_NONE;
     daily_low_values[i] = LV_CHART_POINT_NONE;
     hourly_temperature_values[i] = LV_CHART_POINT_NONE;
+    daily_point_renderable[i] = false;
+    hourly_point_renderable[i] = false;
   }
   create_daily_chart(scr);
   create_hourly_chart(scr);
@@ -2086,6 +2149,7 @@ static void create_landscape_ui(lv_obj_t *scr) {
 
 void create_ui() {
   lv_obj_t *scr = lv_scr_act();
+  lbl_home_location = nullptr;
   lv_obj_scroll_to(scr, 0, 0, LV_ANIM_OFF);
   lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_scrollbar_mode(scr, LV_SCROLLBAR_MODE_OFF);
@@ -2113,6 +2177,15 @@ void populate_results_dropdown() {
     lv_obj_add_flag(results_dd, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_remove_state(btn_close_loc, LV_STATE_DISABLED);
     lv_obj_add_flag(btn_close_loc, LV_OBJ_FLAG_CLICKABLE);
+  }
+}
+
+static void update_location_labels() {
+  if (lbl_home_location && lv_obj_is_valid(lbl_home_location)) {
+    lv_label_set_text(lbl_home_location, location.c_str());
+  }
+  if (lbl_settings_location && lv_obj_is_valid(lbl_settings_location)) {
+    lv_label_set_text(lbl_settings_location, location.c_str());
   }
 }
 
@@ -2144,7 +2217,7 @@ static void location_save_event_cb(lv_event_t *e) {
   location = prefs.getString("location");
 
   // Re‐fetch weather immediately
-  lv_label_set_text(lbl_loc, opts.c_str());
+  update_location_labels();
   fetch_and_update_weather();
 
   lv_obj_del(location_win);
@@ -2405,7 +2478,7 @@ void create_location_dialog() {
   lv_obj_set_style_height(header, 30, 0);
   lv_obj_set_style_text_font(title, get_font_16(), 0);
   lv_obj_set_style_margin_left(title, 10, 0);
-  lv_obj_set_size(location_win, 240, 320);
+  lv_obj_set_size(location_win, display_width(), display_height());
   lv_obj_center(location_win);
 
   lv_obj_t *cont = lv_win_get_content(location_win);
@@ -2476,8 +2549,9 @@ void create_settings_window() {
 
   const LocalizedStrings* strings = get_strings(current_language);
   const ThemePalette &palette = theme_palette(current_theme);
+  lbl_settings_location = nullptr;
   settings_win = lv_win_create(lv_scr_act());
-  lv_obj_set_size(settings_win, SCREEN_WIDTH, SCREEN_HEIGHT);
+  lv_obj_set_size(settings_win, display_width(), display_height());
   lv_obj_center(settings_win);
   lv_obj_clear_flag(settings_win, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_scrollbar_mode(settings_win, LV_SCROLLBAR_MODE_OFF);
@@ -2595,14 +2669,20 @@ void create_settings_window() {
   lv_obj_t *lbl_loc_l = lv_label_create(location_row);
   lv_label_set_text(lbl_loc_l, strings->location);
   style_label(lbl_loc_l);
-  lbl_loc = lv_label_create(location_row);
-  lv_label_set_text(lbl_loc, location.c_str());
-  lv_obj_set_style_text_font(lbl_loc, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_label_set_long_mode(lbl_loc, LV_LABEL_LONG_DOT);
-  lv_obj_set_width(lbl_loc, 135);
-  lv_obj_align(lbl_loc, LV_ALIGN_RIGHT_MID, 0, 0);
-  lv_obj_set_style_text_align(lbl_loc, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_text_color(lbl_loc, theme_color(palette.muted), LV_PART_MAIN | LV_STATE_DEFAULT);
+  lbl_settings_location = lv_label_create(location_row);
+  lv_label_set_text(lbl_settings_location, location.c_str());
+  lv_obj_set_style_text_font(
+      lbl_settings_location, get_font_12(),
+      LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_label_set_long_mode(lbl_settings_location, LV_LABEL_LONG_DOT);
+  lv_obj_set_width(lbl_settings_location, 135);
+  lv_obj_align(lbl_settings_location, LV_ALIGN_RIGHT_MID, 0, 0);
+  lv_obj_set_style_text_align(
+      lbl_settings_location, LV_TEXT_ALIGN_RIGHT,
+      LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_color(
+      lbl_settings_location, theme_color(palette.muted),
+      LV_PART_MAIN | LV_STATE_DEFAULT);
 
   // Language selection
   lv_obj_t *language_row = create_row(42);
@@ -2774,6 +2854,7 @@ static void settings_event_handler(lv_event_t *e) {
 
     lv_obj_del(settings_win);
     settings_win = nullptr;
+    lbl_settings_location = nullptr;
 
     schedule_weather_refresh_after_click();
   }

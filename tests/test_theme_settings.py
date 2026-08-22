@@ -50,8 +50,30 @@ int main() {{
             "touch_rotation",
             "theme_names[THEME_COUNT]",
             "weather_conditions[10]",
+            "daily_tab",
+            "hourly_tab",
         ):
             self.assertIn(field, TRANSLATIONS)
+
+    def test_all_languages_have_distinct_short_landscape_tabs(self):
+        self.run_cpp(r'''
+  const LocalizedStrings *languages[] = {
+      &strings_en, &strings_es, &strings_de, &strings_fr,
+      &strings_tr, &strings_sv, &strings_it, &strings_zh};
+  const char *daily[] = {
+      "7 days", "7 días", "7 Tage", "7 jours",
+      "7 gün", "7 dygn", "7 gg", "7天"};
+  const char *hourly[] = {
+      "Hours", "Horas", "Std.", "Heures",
+      "Saat", "Tim", "Ore", "小时"};
+  for (int index = 0; index < 8; index++) {
+    if (!languages[index]->daily_tab[0] || !languages[index]->hourly_tab[0]) return 40 + index;
+    if (!std::strcmp(languages[index]->daily_tab, languages[index]->hourly_tab)) return 50 + index;
+    if (std::strcmp(languages[index]->daily_tab, daily[index])) return 60 + index;
+    if (std::strcmp(languages[index]->hourly_tab, hourly[index])) return 70 + index;
+  }
+  return 0;
+''')
 
     def test_all_languages_provide_ordered_theme_and_weather_strings(self):
         self.run_cpp(r'''
