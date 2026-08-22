@@ -888,8 +888,12 @@ void update_home_status(uint8_t source, const char *updated_at) {
   }
   if (lbl_update_status) {
     if (geometry_for_rotation(current_rotation).landscape) {
-      compact_updated.replace(":", ".");
-      lv_label_set_text(lbl_update_status, compact_updated.c_str());
+      String compact_label = strings->weather_updated;
+      if (compact_label.endsWith(":")) {
+        compact_label.remove(compact_label.length() - 1);
+      }
+      lv_label_set_text_fmt(lbl_update_status, "%s %s",
+                            compact_label.c_str(), compact_updated.c_str());
     } else {
       String source_name = weather_source_name(weather_source, strings);
       lv_label_set_text_fmt(lbl_update_status, "%s %s",
@@ -2098,7 +2102,7 @@ static void create_landscape_header(lv_obj_t *scr) {
   const LocalizedStrings *strings = get_strings(current_language);
 
   lbl_update_status = lv_label_create(scr);
-  lv_obj_set_size(lbl_update_status, 76, 13);
+  lv_obj_set_size(lbl_update_status, 100, 13);
   lv_obj_set_pos(lbl_update_status, 6, 44);
   lv_label_set_long_mode(lbl_update_status, LV_LABEL_LONG_DOT);
   lv_obj_set_style_text_font(
@@ -2130,8 +2134,8 @@ static void create_landscape_header(lv_obj_t *scr) {
       LV_PART_MAIN | LV_STATE_DEFAULT);
 
   lbl_today_feels_like = lv_label_create(scr);
-  lv_obj_set_size(lbl_today_feels_like, 230, 16);
-  lv_obj_set_pos(lbl_today_feels_like, 84, 32);
+  lv_obj_set_size(lbl_today_feels_like, 230, 15);
+  lv_obj_set_pos(lbl_today_feels_like, 84, 29);
   lv_label_set_long_mode(lbl_today_feels_like, LV_LABEL_LONG_DOT);
   lv_label_set_text(lbl_today_feels_like, strings->feels_like_temp);
   lv_obj_set_style_text_font(

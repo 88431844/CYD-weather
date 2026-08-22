@@ -111,6 +111,7 @@ class LandscapeWeatherUiTests(unittest.TestCase):
         self.assertNotIn("lbl_home_location = lv_label_create(scr);", header)
         self.assertNotIn("lbl_network_status = lv_label_create(scr);", header)
         self.assertIn("lbl_update_status = lv_label_create(scr);", header)
+        self.assertIn("lv_obj_set_size(lbl_update_status, 100, 13);", header)
         self.assertIn("lv_obj_set_pos(lbl_update_status, 6, 44);", header)
         self.assertIn("lv_obj_set_size(lbl_today_temp, 76, 46);", header)
         self.assertIn("lv_obj_set_pos(lbl_today_temp, 6, 0);", header)
@@ -123,8 +124,8 @@ class LandscapeWeatherUiTests(unittest.TestCase):
             "lv_obj_set_pos(landscape_current_condition, 84, 4);", header
         )
         self.assertIn("landscape_current_condition, get_font_20()", header)
-        self.assertIn("lv_obj_set_size(lbl_today_feels_like, 230, 16);", header)
-        self.assertIn("lv_obj_set_pos(lbl_today_feels_like, 84, 32);", header)
+        self.assertIn("lv_obj_set_size(lbl_today_feels_like, 230, 15);", header)
+        self.assertIn("lv_obj_set_pos(lbl_today_feels_like, 84, 29);", header)
 
     def test_landscape_update_status_omits_provider_and_ip(self):
         update = function_body(
@@ -134,9 +135,13 @@ class LandscapeWeatherUiTests(unittest.TestCase):
         self.assertIn("if (lbl_network_status)", update)
         self.assertIn("if (lbl_update_status)", update)
         self.assertIn("geometry_for_rotation(current_rotation).landscape", update)
-        self.assertIn('compact_updated.replace(":", ".");', update)
+        self.assertIn("String compact_label = strings->weather_updated;", update)
+        self.assertIn('if (compact_label.endsWith(":"))', update)
+        self.assertIn("compact_label.remove(compact_label.length() - 1);", update)
         self.assertIn(
-            "lv_label_set_text(lbl_update_status, compact_updated.c_str());", update
+            'lv_label_set_text_fmt(lbl_update_status, "%s %s",\n'
+            "                            compact_label.c_str(), compact_updated.c_str());",
+            update,
         )
         self.assertIn(
             'lv_label_set_text_fmt(lbl_update_status, "%s %s",\n'
