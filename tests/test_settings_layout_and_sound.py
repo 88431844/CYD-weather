@@ -106,14 +106,17 @@ class SettingsLayoutAndSoundTests(unittest.TestCase):
         self.assertIn("struct PendingDisplayPreferences", WEATHER)
         self.assertIn("static bool display_preferences_async_pending = false;", WEATHER)
         helpers_start = WEATHER.index("static void apply_control_part(")
-        schedule_start = WEATHER.index("static void schedule_display_preferences_apply(", helpers_start)
+        schedule_start = WEATHER.index("static bool schedule_display_preferences_apply(", helpers_start)
         schedule = WEATHER[
             schedule_start :
             WEATHER.index("static void apply_display_preferences_async", schedule_start)
         ]
+        self.assertIn("static bool schedule_display_preferences_apply(", schedule)
         self.assertIn("pending_display_preferences.theme =", schedule)
         self.assertIn("pending_display_preferences.rotation =", schedule)
-        self.assertIn("if (display_preferences_async_pending) return;", schedule)
+        self.assertIn("if (display_preferences_async_pending) return true;", schedule)
+        self.assertIn("return false;", schedule)
+        self.assertRegex(schedule, r"return true;\s*\}")
         self.assertEqual(schedule.count("lv_async_call(apply_display_preferences_async"), 1)
 
         apply_start = WEATHER.index("static void apply_display_preferences_async", schedule_start)
@@ -149,6 +152,10 @@ class SettingsLayoutAndSoundTests(unittest.TestCase):
             self.assertNotIn("lv_obj_del", branch)
             self.assertNotIn("rebuild_ui", branch)
             self.assertNotIn("fetch_and_update_weather", branch)
+        self.assertIn("if (!schedule_display_preferences_apply(", rotation_branch)
+        self.assertIn("lv_buttonmatrix_clear_button_ctrl_all(", rotation_branch)
+        self.assertIn("LV_BUTTONMATRIX_CTRL_CHECKED", rotation_branch)
+        self.assertIn("static_cast<uint32_t>(current_rotation)", rotation_branch)
 
     def test_display_rows_are_localized_stable_and_scrollable_in_both_orientations(self):
         settings = WEATHER[WEATHER.index("void create_settings_window() {") :]

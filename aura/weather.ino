@@ -268,6 +268,7 @@ static lv_obj_t *calibration_progress_label = nullptr;
 static lv_timer_t *calibration_timer = nullptr;
 static ScreenRotation calibration_previous_rotation = SCREEN_ROTATION_0;
 static bool calibration_start_pending = false;
+static bool calibration_finish_requested = false;
 static bool calibration_finish_pending = false;
 static bool calibration_pending_success = false;
 
@@ -354,7 +355,7 @@ void play_click_sound();
 static void stop_click_sound(lv_timer_t *timer);
 static void schedule_weather_refresh_after_click();
 static void apply_display_preferences_async(void *user_data);
-static void schedule_display_preferences_apply(ThemeId theme,
+static bool schedule_display_preferences_apply(ThemeId theme,
                                                ScreenRotation rotation,
                                                bool reopen_settings);
 static void start_touch_calibration();
@@ -803,7 +804,7 @@ static void position_chart_temperature_labels() {
 }
 
 static void render_weather_snapshot() {
-  if (calibration_active) return;
+  if (calibration_active || wifi_splash_active) return;
   if (geometry_for_rotation(current_rotation).landscape) {
     render_landscape_snapshot();
   } else {
@@ -1234,7 +1235,11 @@ void flush_wifi_splashscreen(uint32_t ms = 200) {
 }
 
 void apModeCallback(WiFiManager *mgr) {
+  (void)mgr;
   if (qweather_portal_active) return;
+  if (calibration_active) {
+    finish_touch_calibration(false);
+  }
   wifi_splash_active = true;
   wifi_splash_screen();
   flush_wifi_splashscreen();
@@ -1274,10 +1279,7 @@ static void restore_home_ui_after_wifi() {
   if (!wifi_splash_active) return;
 
   wifi_splash_active = false;
-  detach_keyboard_from_textarea();
-  clear_screen_object_references();
-  lv_obj_clean(lv_scr_act());
-  create_ui();
+  rebuild_ui(false);
 }
 
 static void process_initial_wifi() {
@@ -1770,19 +1772,21 @@ static void apply_buttonmatrix_theme(lv_obj_t *buttonmatrix) {
                      palette.grid, palette.muted, palette.grid);
 }
 
-static void schedule_display_preferences_apply(
+static bool schedule_display_preferences_apply(
     ThemeId theme, ScreenRotation rotation, bool reopen_settings) {
   pending_display_preferences.theme = validated_theme(
       static_cast<uint32_t>(theme));
   pending_display_preferences.rotation = validated_rotation(
       static_cast<uint32_t>(rotation));
   pending_display_preferences.reopen_settings = reopen_settings;
-  if (display_preferences_async_pending) return;
+  if (display_preferences_async_pending) return true;
 
   display_preferences_async_pending = true;
   if (lv_async_call(apply_display_preferences_async, nullptr) != LV_RESULT_OK) {
     display_preferences_async_pending = false;
+    return false;
   }
+  return true;
 }
 
 static void apply_display_preferences_async(void *user_data) {
@@ -2458,16 +2462,34 @@ static void queue_touch_calibration_start() {
 static void finish_touch_calibration_async(void *user_data) {
   (void)user_data;
   calibration_finish_pending = false;
-  finish_touch_calibration(calibration_pending_success);
+  if (!calibration_finish_requested || !calibration_active) return;
+
+  const bool success = calibration_pending_success;
+  calibration_finish_requested = false;
+  finish_touch_calibration(success);
 }
 
-static void queue_touch_calibration_finish(bool success) {
-  if (!calibration_active || calibration_finish_pending) return;
-  calibration_pending_success = success;
+static void schedule_touch_calibration_finish_request() {
+  if (!calibration_active || !calibration_finish_requested ||
+      calibration_finish_pending) {
+    return;
+  }
+
   calibration_finish_pending = true;
   if (lv_async_call(finish_touch_calibration_async, nullptr) != LV_RESULT_OK) {
     calibration_finish_pending = false;
   }
+}
+
+static void queue_touch_calibration_finish(bool success) {
+  if (!calibration_active) return;
+  if (!calibration_finish_requested) {
+    calibration_finish_requested = true;
+    calibration_pending_success = success;
+  }
+  if (!success) calibration_pending_success = false;
+  if (calibration_finish_pending) return;
+  schedule_touch_calibration_finish_request();
 }
 
 static void calibration_cancel_event_cb(lv_event_t *e) {
@@ -2478,6 +2500,11 @@ static void calibration_cancel_event_cb(lv_event_t *e) {
 
 static void finish_touch_calibration(bool success) {
   if (!calibration_active) return;
+
+  calibration_finish_requested = false;
+  calibration_finish_pending = false;
+  calibration_pending_success = false;
+  lv_async_call_cancel(finish_touch_calibration_async, nullptr);
 
   if (success) {
     TouchScreenPoint targets[5];
@@ -2536,7 +2563,11 @@ static void restore_rotation_after_calibration(bool success) {
 
 static void calibration_timer_cb(lv_timer_t *timer) {
   (void)timer;
-  if (!calibration_active || calibration_finish_pending) return;
+  if (!calibration_active) return;
+  if (calibration_finish_requested) {
+    schedule_touch_calibration_finish_request();
+    return;
+  }
   if (millis() - calibration_started_ms >= TOUCH_CALIBRATION_TIMEOUT_MS) {
     queue_touch_calibration_finish(false);
     return;
@@ -2625,6 +2656,9 @@ static void start_touch_calibration() {
   calibration_sample_count = 0;
   calibration_target_index = 0;
   calibration_state = TOUCH_CALIBRATION_WAIT_PRESS;
+  calibration_finish_requested = false;
+  calibration_finish_pending = false;
+  calibration_pending_success = false;
   create_touch_calibration_overlay();
 }
 
@@ -3118,8 +3152,14 @@ static void settings_event_handler(lv_event_t *e) {
       const ThemeId next_theme = display_preferences_async_pending
           ? pending_display_preferences.theme
           : current_theme;
-      schedule_display_preferences_apply(
-          next_theme, static_cast<ScreenRotation>(selected), true);
+      if (!schedule_display_preferences_apply(
+              next_theme, static_cast<ScreenRotation>(selected), true)) {
+        lv_buttonmatrix_clear_button_ctrl_all(
+            rotation_buttonmatrix, LV_BUTTONMATRIX_CTRL_CHECKED);
+        lv_buttonmatrix_set_button_ctrl(
+            rotation_buttonmatrix, static_cast<uint32_t>(current_rotation),
+            LV_BUTTONMATRIX_CTRL_CHECKED);
+      }
     }
     return;
   }

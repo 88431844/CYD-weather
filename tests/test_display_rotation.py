@@ -181,7 +181,6 @@ class DisplayRotationContractTests(unittest.TestCase):
         cases = (
             ("static void rebuild_ui(bool reopen_settings)", "lv_obj_clean(lv_scr_act());"),
             ("void setup()", "lv_obj_clean(lv_scr_act());"),
-            ("static void restore_home_ui_after_wifi()", "lv_obj_clean(lv_scr_act());"),
             ("void wifi_splash_screen()", "lv_obj_clean(scr);"),
             ("static void start_touch_calibration()", "lv_obj_clean(lv_scr_act());"),
         )
@@ -192,6 +191,19 @@ class DisplayRotationContractTests(unittest.TestCase):
             clean = body.index(clean_call)
             self.assertLess(detach, clear, signature)
             self.assertLess(clear, clean, signature)
+
+    def test_ap_mode_finishes_active_calibration_before_splash(self):
+        callback = function_body("void apModeCallback(WiFiManager *mgr)")
+        self.assertIn("if (calibration_active)", callback)
+        self.assertIn("finish_touch_calibration(false);", callback)
+        self.assertLess(
+            callback.index("finish_touch_calibration(false);"),
+            callback.index("wifi_splash_active = true;"),
+        )
+        self.assertLess(
+            callback.index("finish_touch_calibration(false);"),
+            callback.index("wifi_splash_screen();"),
+        )
 
     def test_backlight_is_enabled_after_rotated_display_and_touch_setup(self):
         setup = function_body("void setup()")

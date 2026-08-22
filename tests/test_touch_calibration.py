@@ -113,6 +113,7 @@ class TouchCalibrationContractTests(unittest.TestCase):
 
     def test_every_calibration_exit_is_coalesced_through_finish(self):
         self.assertIn("static bool calibration_finish_pending = false;", WEATHER)
+        self.assertIn("static bool calibration_finish_requested = false;", WEATHER)
         self.assertIn("static void queue_touch_calibration_finish(bool success)", WEATHER)
         self.assertIn("lv_async_call(finish_touch_calibration_async", WEATHER)
         cancel = WEATHER[
@@ -132,6 +133,48 @@ class TouchCalibrationContractTests(unittest.TestCase):
             WEATHER.index("static void calibration_timer_cb", WEATHER.index("static void finish_touch_calibration(bool success) {"))
         ]
         self.assertEqual(finish.count("restore_rotation_after_calibration(success);"), 1)
+
+    def test_finish_request_survives_async_failure_and_cancel_wins(self):
+        schedule = WEATHER[
+            WEATHER.index("static void schedule_touch_calibration_finish_request() {") :
+            WEATHER.index("static void queue_touch_calibration_finish(bool success) {")
+        ]
+        self.assertIn("calibration_finish_pending = true;", schedule)
+        self.assertIn("calibration_finish_pending = false;", schedule)
+        failure = schedule[schedule.index("!= LV_RESULT_OK") :]
+        self.assertNotIn("calibration_finish_requested = false;", failure)
+
+        queue = WEATHER[
+            WEATHER.index("static void queue_touch_calibration_finish(bool success) {") :
+            WEATHER.index("static void calibration_cancel_event_cb", WEATHER.index("static void queue_touch_calibration_finish(bool success) {"))
+        ]
+        self.assertIn("calibration_finish_requested = true;", queue)
+        self.assertIn("if (!success) calibration_pending_success = false;", queue)
+        self.assertIn("if (calibration_finish_pending) return;", queue)
+        self.assertIn("schedule_touch_calibration_finish_request();", queue)
+
+        timer = WEATHER[
+            WEATHER.index("static void calibration_timer_cb") :
+            WEATHER.index("static void create_touch_calibration_overlay", WEATHER.index("static void calibration_timer_cb"))
+        ]
+        self.assertIn("if (calibration_finish_requested)", timer)
+        self.assertIn("schedule_touch_calibration_finish_request();", timer)
+
+        callback = WEATHER[
+            WEATHER.index("static void finish_touch_calibration_async(void *user_data) {") :
+            WEATHER.index("static void queue_touch_calibration_finish", WEATHER.index("static void finish_touch_calibration_async(void *user_data) {"))
+        ]
+        self.assertIn("if (!calibration_finish_requested || !calibration_active) return;", callback)
+        self.assertIn("calibration_finish_requested = false;", callback)
+
+    def test_direct_finish_cancels_persistent_and_queued_requests(self):
+        finish = WEATHER[
+            WEATHER.index("static void finish_touch_calibration(bool success) {") :
+            WEATHER.index("static void show_calibration_result", WEATHER.index("static void finish_touch_calibration(bool success) {"))
+        ]
+        self.assertIn("calibration_finish_requested = false;", finish)
+        self.assertIn("calibration_finish_pending = false;", finish)
+        self.assertIn("lv_async_call_cancel(finish_touch_calibration_async, nullptr);", finish)
 
     def test_calibration_start_is_deferred_outside_settings_event(self):
         handler = WEATHER[

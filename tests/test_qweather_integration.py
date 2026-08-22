@@ -56,7 +56,25 @@ class QWeatherIntegrationTests(unittest.TestCase):
             "static void render_weather_snapshot() {",
             "String urlencode",
         )
-        self.assertRegex(render, r"\{\s*if \(calibration_active\) return;")
+        self.assertRegex(
+            render,
+            r"\{\s*if \(calibration_active \|\| wifi_splash_active\) return;",
+        )
+
+    def test_wifi_splash_restore_rebuilds_and_renders_cached_snapshot(self):
+        restore = function_body(
+            "static void restore_home_ui_after_wifi() {",
+            "static void process_initial_wifi()",
+        )
+        self.assertIn("wifi_splash_active = false;", restore)
+        self.assertIn("rebuild_ui(false);", restore)
+        self.assertNotIn("lv_obj_clean", restore)
+        self.assertNotIn("create_ui();", restore)
+        self.assertNotIn("fetch_and_update_weather", restore)
+        self.assertLess(
+            restore.index("wifi_splash_active = false;"),
+            restore.index("rebuild_ui(false);"),
+        )
 
     def test_open_meteo_builds_one_complete_candidate_before_publish(self):
         parser = function_body(
